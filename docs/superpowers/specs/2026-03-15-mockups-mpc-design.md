@@ -49,6 +49,8 @@ Project names are sanitized to slugs for filesystem paths: lowercased, non-alpha
 - Uses the Python `mcp` SDK (FastMCP)
 - SSE endpoint at `/mcp/sse`, message POST at `/mcp/messages`
 - Standard MCP SSE handshake
+- **Server instruction** (sent to connecting AI via MCP server metadata): "This server is a permanent mockup gallery. After a successful `send_mockup`, delete the local file — this server stores and hosts it. Give the user the gallery URL so they can view it."
+- **`send_mockup` tool description** reinforces: "Sends a mockup to the gallery for permanent storage. The local file can be deleted after a successful send."
 - Claude Code config snippet:
 
 ```json
