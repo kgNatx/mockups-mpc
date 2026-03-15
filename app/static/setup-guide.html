@@ -778,13 +778,49 @@ cp .env.example .env</pre></div>
     </div>
   </section>
 
-  <!-- Section 6: Other AI Tools -->
+  <!-- Section 6: Connect Claude Desktop -->
   <section class="section">
     <div class="section-number">06</div>
+    <h2>Connect Claude Desktop</h2>
+    <p>Claude Desktop uses a JSON config file for MCP servers. The file location depends on your OS:</p>
+
+    <ul>
+      <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+      <li><strong>Windows:</strong> <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
+      <li><strong>Linux:</strong> <code>~/.config/Claude/claude_desktop_config.json</code></li>
+    </ul>
+
+    <p>Open the file (create it if it doesn't exist) and add the mockups server:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">claude_desktop_config.json</span>
+        <button class="copy-btn" type="button">Copy</button>
+      </div>
+      <div class="code-body"><pre><span class="pnc">{</span>
+  <span class="key">"mcpServers"</span><span class="pnc">:</span> <span class="pnc">{</span>
+    <span class="key">"mockups"</span><span class="pnc">:</span> <span class="pnc">{</span>
+      <span class="key">"type"</span><span class="pnc">:</span> <span class="str">"sse"</span><span class="pnc">,</span>
+      <span class="key">"url"</span><span class="pnc">:</span> <span class="str">"https://mockups.yourdomain.com/mcp/sse"</span>
+    <span class="pnc">}</span>
+  <span class="pnc">}</span>
+<span class="pnc">}</span></pre></div>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-label">Note: Transport type</div>
+      Claude Desktop supports SSE transport for remote MCP servers. Use the <code>/mcp/sse</code> endpoint. If your version of Claude Desktop supports streamable HTTP, you can use <code>"type": "http"</code> with the <code>/mcp</code> endpoint instead.
+    </div>
+
+    <p>After saving the config, restart Claude Desktop. The mockups tools will appear in the tools menu (hammer icon) when starting a new conversation.</p>
+  </section>
+
+  <!-- Section 7: Other AI Tools -->
+  <section class="section">
+    <div class="section-number">07</div>
     <h2>Other AI Tools</h2>
     <p>Mockups MPC implements the standard Model Context Protocol, so any MCP-compatible client can connect. The server supports both Streamable HTTP and SSE transports.</p>
     <ul>
-      <li><strong>Claude Desktop</strong> &mdash; add the server in Settings &rarr; Developer &rarr; MCP Servers using the same HTTP URL.</li>
       <li><strong>Gemini CLI</strong> &mdash; configure MCP servers in your <code>settings.json</code> with the same URL pattern.</li>
       <li><strong>Any MCP client</strong> &mdash; point it to <code>https://mockups.yourdomain.com/mcp</code> using HTTP transport, or <code>/mcp/sse</code> for SSE.</li>
     </ul>
