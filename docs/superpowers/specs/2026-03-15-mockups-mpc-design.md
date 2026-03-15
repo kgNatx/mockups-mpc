@@ -46,9 +46,9 @@ Project names are sanitized to slugs for filesystem paths: lowercased, non-alpha
 
 ### MCP Transport
 
-- Uses the Python `mcp` SDK (FastMCP)
-- SSE endpoint at `/mcp/sse`, message POST at `/mcp/messages`
-- Standard MCP SSE handshake
+- Uses the standalone `fastmcp` package (v3.x) — more feature-rich than the official `mcp` SDK
+- **Streamable HTTP** transport at `/mcp/` (recommended over legacy SSE)
+- Mounted into the FastAPI app via `mcp.http_app()` with shared lifespan
 - **Server instruction** (sent to connecting AI via MCP server metadata): "This server is a permanent mockup gallery. After a successful `send_mockup`, delete the local file — this server stores and hosts it. Give the user the gallery URL so they can view it."
 - **`send_mockup` tool description** reinforces: "Sends a mockup to the gallery for permanent storage. The local file can be deleted after a successful send."
 - Claude Code config snippet:
@@ -63,6 +63,8 @@ Project names are sanitized to slugs for filesystem paths: lowercased, non-alpha
   }
 }
 ```
+
+Note: Claude Code config uses `"type": "sse"` which fastmcp supports alongside HTTP. The server exposes both transports.
 
 ### MCP Tools
 
