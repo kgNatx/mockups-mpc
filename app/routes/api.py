@@ -2,7 +2,7 @@ import base64
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
-from app.db import get_mockup, list_mockups, list_projects, delete_mockup as db_delete_mockup
+from app.db import get_mockup, list_mockups, list_projects
 from app.storage import BINARY_TYPES, TEXT_TYPES, VALID_TYPES, MAX_CONTENT_SIZE
 
 router = APIRouter(prefix="/api")
@@ -35,13 +35,11 @@ async def api_get_mockup(request: Request, mockup_id: str):
 
 @router.delete("/mockups/{mockup_id}")
 async def api_delete_mockup(request: Request, mockup_id: str):
-    from app.storage import delete_mockup_file
-    row = await get_mockup(request.app.state.db, mockup_id)
-    if row is None:
+    from app.mcp_server import _delete_mockup
+    try:
+        return await _delete_mockup(db=request.app.state.db, id=mockup_id)
+    except ValueError:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    delete_mockup_file(row["file_path"])
-    await db_delete_mockup(request.app.state.db, mockup_id)
-    return {"deleted": True, "id": mockup_id}
 
 @router.get("/projects")
 async def api_list_projects(request: Request):
@@ -80,7 +78,10 @@ async def api_upload(
 
     # Encode content the way _send_mockup expects it
     if content_type in TEXT_TYPES:
-        content = data.decode("utf-8")
+        try:
+            content = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return JSONResponse({"error": "File is not valid UTF-8"}, status_code=400)
     else:
         content = base64.b64encode(data).decode("ascii")
 

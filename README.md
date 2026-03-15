@@ -55,6 +55,10 @@ Single Docker container running a FastAPI app that serves two roles:
 - Jinja2 templates + vanilla JS
 - Docker + Traefik
 
+## Security
+
+There is no built-in authentication. All API endpoints and MCP tools are open to anyone who can reach the server. This is designed for trusted networks (LAN, VPN, Tailscale) or behind a reverse proxy that handles auth. If you deploy this on a public network, add authentication at the proxy layer.
+
 ## MCP Tools
 
 | Tool | Description |
@@ -209,7 +213,7 @@ pytest tests/ -v
 uvicorn app.main:app --reload
 ```
 
-41 tests covering storage, database, MCP tools, API routes, and gallery.
+47 tests covering storage, database, MCP tools, API routes, upload, and gallery.
 
 ## License
 
