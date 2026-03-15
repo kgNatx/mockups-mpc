@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mockups</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="shell">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <h1>Mockups</h1>
+        <div class="brand-sub">Design Artifacts</div>
+      </div>
+
+      <div class="sidebar-projects">
+        <div class="section-label">Projects</div>
+        <ul class="project-list" id="project-list"></ul>
+      </div>
+
+      <div class="sidebar-filter">
+        <input
+          type="text"
+          class="filter-input"
+          id="filter-input"
+          placeholder="Filter by title..."
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </div>
+
+      <div class="sidebar-feed" id="feed-container">
+        <div class="feed-status" id="feed-status">Loading...</div>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN VIEWER ===== -->
+    <main class="main">
+      <div class="meta-bar empty" id="meta-bar">
+        <span class="meta-hint">Select a mockup to preview</span>
+      </div>
+      <div class="viewer" id="viewer">
+        <div class="viewer-empty">
+          <div class="viewer-empty-icon">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="9" y1="3" x2="9" y2="9" />
+            </svg>
+          </div>
+          <div class="viewer-empty-text">No mockup selected</div>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── State ── */
+  var state = {
+    projects: [],
+    mockups: [],
+    activeProject: null,   // null = all
+    activeMockupId: null,
+    filterText: "",
+    offset: 0,
+    limit: 50,
+    loading: false,
+    exhausted: false
+  };
+
+  /* ── DOM refs ── */
+  var projectListEl  = document.getElementById("project-list");
+  var feedContainer   = document.getElementById("feed-container");
+  var feedStatusEl    = document.getElementById("feed-status");
+  var filterInput     = document.getElementById("filter-input");
+  var metaBar         = document.getElementById("meta-bar");
+  var viewer          = document.getElementById("viewer");
+
+  /* ── Helpers ── */
+  function el(tag, cls, attrs) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        node.setAttribute(k, attrs[k]);
+      });
+    }
+    return node;
+  }
+
+  function text(str) { return document.createTextNode(str); }
+
+  function clearChildren(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  function formatTime(iso) {
+    var d = new Date(iso);
+    var now = new Date();
+    var diff = now - d;
+    if (diff < 60000) return "just now";
+    if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
+    if (diff < 86400000) return Math.floor(diff / 3600000) + "h ago";
+    if (diff < 604800000) return Math.floor(diff / 86400000) + "d ago";
+    var month = d.toLocaleString("en", { month: "short" });
+    return month + " " + d.getDate();
+  }
+
+  /* ── Projects ── */
+  async function loadProjects() {
+    var resp = await fetch("/api/projects");
+    state.projects = await resp.json();
+    renderProjects();
+  }
+
+  function renderProjects() {
+    clearChildren(projectListEl);
+
+    // "All" item
+    var allItem = el("li", "project-item" + (state.activeProject === null ? " active" : ""));
+    allItem.addEventListener("click", function () { selectProject(null); });
+    var allName = el("span", "project-name");
+    allName.appendChild(text("All"));
+    var allCount = el("span", "project-count");
+    var total = state.projects.reduce(function (s, p) { return s + p.count; }, 0);
+    allCount.appendChild(text(String(total)));
+    allItem.appendChild(allName);
+    allItem.appendChild(allCount);
+    projectListEl.appendChild(allItem);
+
+    state.projects.forEach(function (proj) {
+      var item = el("li", "project-item" + (state.activeProject === proj.project_slug ? " active" : ""));
+      item.addEventListener("click", function () { selectProject(proj.project_slug); });
+      var name = el("span", "project-name");
+      name.appendChild(text(proj.project));
+      var count = el("span", "project-count");
+      count.appendChild(text(String(proj.count)));
+      item.appendChild(name);
+      item.appendChild(count);
+      projectListEl.appendChild(item);
+    });
+  }
+
+  function selectProject(slug) {
+    state.activeProject = slug;
+    state.offset = 0;
+    state.exhausted = false;
+    state.mockups = [];
+    renderProjects();
+    loadMockups(true);
+  }
+
+  /* ── Mockups Feed ── */
+  async function loadMockups(reset) {
+    if (state.loading) return;
+    if (!reset && state.exhausted) return;
+
+    state.loading = true;
+
+    if (reset) {
+      state.offset = 0;
+      state.exhausted = false;
+      state.mockups = [];
+      // clear feed but keep container
+      var items = feedContainer.querySelectorAll(".feed-item, .feed-loader");
+      items.forEach(function (el) { el.remove(); });
+      feedStatusEl.textContent = "Loading...";
+      feedStatusEl.style.display = "";
+    }
+
+    var url = "/api/mockups?limit=" + state.limit + "&offset=" + state.offset;
+    if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
+
+    var resp = await fetch(url);
+    var data = await resp.json();
+
+    if (data.length < state.limit) state.exhausted = true;
+    state.offset += data.length;
+
+    if (reset) state.mockups = data;
+    else state.mockups = state.mockups.concat(data);
+
+    state.loading = false;
+    renderFeed(reset);
+  }
+
+  function renderFeed(isReset) {
+    feedStatusEl.style.display = "none";
+
+    // Remove existing loader
+    var oldLoader = feedContainer.querySelector(".feed-loader");
+    if (oldLoader) oldLoader.remove();
+
+    if (state.mockups.length === 0) {
+      feedStatusEl.textContent = "No mockups yet";
+      feedStatusEl.style.display = "";
+      return;
+    }
+
+    var filtered = getFilteredMockups();
+
+    if (isReset) {
+      // remove all feed-items
+      var oldItems = feedContainer.querySelectorAll(".feed-item");
+      oldItems.forEach(function (el) { el.remove(); });
+    }
+
+    if (filtered.length === 0) {
+      feedStatusEl.textContent = "No matches";
+      feedStatusEl.style.display = "";
+      return;
+    }
+
+    var startIdx = isReset ? 0 : filtered.length - (state.mockups.length - (state.offset - state.limit));
+    if (startIdx < 0) startIdx = 0;
+    if (isReset) startIdx = 0;
+
+    // For simplicity, on reset re-render all; on append just render new items
+    if (isReset) {
+      var existingItems = feedContainer.querySelectorAll(".feed-item");
+      existingItems.forEach(function (el) { el.remove(); });
+    }
+
+    var renderList = isReset ? filtered : filtered;
+    if (isReset) {
+      renderList.forEach(function (mockup) {
+        feedContainer.appendChild(createFeedItem(mockup));
+      });
+    } else {
+      // just re-render all on filter for simplicity
+      var existItems = feedContainer.querySelectorAll(".feed-item");
+      existItems.forEach(function (el) { el.remove(); });
+      filtered.forEach(function (mockup) {
+        feedContainer.appendChild(createFeedItem(mockup));
+      });
+    }
+  }
+
+  function getFilteredMockups() {
+    if (!state.filterText) return state.mockups;
+    var q = state.filterText.toLowerCase();
+    return state.mockups.filter(function (m) {
+      return m.title.toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  function createFeedItem(mockup) {
+    var item = el("div", "feed-item" + (mockup.id === state.activeMockupId ? " active" : ""));
+    item.setAttribute("data-id", mockup.id);
+    item.addEventListener("click", function () { selectMockup(mockup.id); });
+
+    var title = el("div", "feed-title");
+    title.appendChild(text(mockup.title));
+    item.appendChild(title);
+
+    var meta = el("div", "feed-meta");
+
+    var badge = el("span", "feed-badge");
+    badge.appendChild(text(mockup.project));
+    meta.appendChild(badge);
+
+    var typeEl = el("span", "feed-type");
+    typeEl.setAttribute("data-type", mockup.content_type);
+    typeEl.appendChild(text(mockup.content_type));
+    meta.appendChild(typeEl);
+
+    var time = el("span", "feed-time");
+    time.appendChild(text(formatTime(mockup.created_at)));
+    meta.appendChild(time);
+
+    item.appendChild(meta);
+    return item;
+  }
+
+  /* ── Mockup Selection ── */
+  function selectMockup(id) {
+    state.activeMockupId = id;
+
+    // Update URL
+    var url = new URL(window.location);
+    url.searchParams.set("mockup", id);
+    history.replaceState(null, "", url);
+
+    // Update feed active state
+    feedContainer.querySelectorAll(".feed-item").forEach(function (el) {
+      if (el.getAttribute("data-id") === id) el.classList.add("active");
+      else el.classList.remove("active");
+    });
+
+    // Find mockup data
+    var mockup = state.mockups.find(function (m) { return m.id === id; });
+    if (!mockup) {
+      // Need to fetch it
+      fetchAndDisplay(id);
+      return;
+    }
+
+    renderViewer(mockup);
+    renderMetaBar(mockup);
+  }
+
+  async function fetchAndDisplay(id) {
+    var resp = await fetch("/api/mockups/" + encodeURIComponent(id));
+    if (!resp.ok) return;
+    var mockup = await resp.json();
+    renderViewer(mockup);
+    renderMetaBar(mockup);
+  }
+
+  function renderMetaBar(mockup) {
+    clearChildren(metaBar);
+    metaBar.classList.remove("empty");
+
+    var title = el("span", "meta-title");
+    title.appendChild(text(mockup.title));
+    metaBar.appendChild(title);
+
+    if (mockup.description) {
+      metaBar.appendChild(el("span", "meta-sep"));
+      var desc = el("span", "meta-desc");
+      desc.appendChild(text(mockup.description));
+      metaBar.appendChild(desc);
+    }
+
+    if (mockup.tags && mockup.tags.length > 0) {
+      metaBar.appendChild(el("span", "meta-sep"));
+      var tagsWrap = el("span", "meta-tags");
+      mockup.tags.forEach(function (t) {
+        var tag = el("span", "meta-tag");
+        tag.appendChild(text(t));
+        tagsWrap.appendChild(tag);
+      });
+      metaBar.appendChild(tagsWrap);
+    }
+
+    metaBar.appendChild(el("span", "meta-sep"));
+
+    var proj = el("span", "meta-project");
+    proj.appendChild(text(mockup.project));
+    metaBar.appendChild(proj);
+
+    metaBar.appendChild(el("span", "meta-sep"));
+
+    var time = el("span", "meta-time");
+    time.appendChild(text(formatTime(mockup.created_at)));
+    metaBar.appendChild(time);
+
+    // spacer
+    var spacer = el("span", "");
+    spacer.style.flex = "1";
+    metaBar.appendChild(spacer);
+
+    var popout = el("a", "meta-popout", {
+      href: "/view/" + encodeURIComponent(mockup.id),
+      target: "_blank",
+      rel: "noopener"
+    });
+    popout.appendChild(text("Pop out"));
+    metaBar.appendChild(popout);
+  }
+
+  function renderViewer(mockup) {
+    clearChildren(viewer);
+
+    var viewUrl = "/view/" + encodeURIComponent(mockup.id);
+
+    if (mockup.content_type === "html") {
+      var iframe = el("iframe", "viewer-iframe", {
+        sandbox: "allow-scripts",
+        src: viewUrl
+      });
+      viewer.appendChild(iframe);
+    } else {
+      // image types: png, jpg, svg
+      var img = el("img", "viewer-image", {
+        src: viewUrl,
+        alt: mockup.title
+      });
+      viewer.appendChild(img);
+    }
+  }
+
+  /* ── Filter Input ── */
+  var filterTimer = null;
+  filterInput.addEventListener("input", function () {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(function () {
+      state.filterText = filterInput.value.trim();
+      renderFeed(true);
+    }, 150);
+  });
+
+  /* ── Infinite Scroll ── */
+  feedContainer.addEventListener("scroll", function () {
+    if (state.loading || state.exhausted) return;
+    var threshold = feedContainer.scrollHeight - feedContainer.scrollTop - feedContainer.clientHeight;
+    if (threshold < 120) {
+      loadMockups(false);
+    }
+  });
+
+  /* ── Direct Link Support ── */
+  function getInitialMockupId() {
+    var params = new URLSearchParams(window.location.search);
+    return params.get("mockup") || null;
+  }
+
+  /* ── Init ── */
+  async function init() {
+    await loadProjects();
+    await loadMockups(true);
+
+    var initialId = getInitialMockupId();
+    if (initialId) {
+      selectMockup(initialId);
+    } else if (state.mockups.length > 0) {
+      // Auto-select most recent
+      selectMockup(state.mockups[0].id);
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

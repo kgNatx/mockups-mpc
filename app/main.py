@@ -22,6 +22,13 @@ app.mount("/mcp", mcp_app)
 from app.routes.api import router as api_router
 app.include_router(api_router)
 
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from app.routes.gallery import router as gallery_router
+
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
+app.include_router(gallery_router)
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
