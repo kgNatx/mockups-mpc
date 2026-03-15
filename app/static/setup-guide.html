@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockups MPC — Setup Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* === Tokens === */
+:root {
+  --bg-deep:       #0b0e17;
+  --bg-surface:    #111827;
+  --bg-raised:     #1a2236;
+  --bg-hover:      #1f2b42;
+  --bg-code:       #0d1220;
+
+  --border-dim:    #1e293b;
+  --border-subtle: #2a3a54;
+  --border-focus:  #3b5278;
+
+  --text-primary:  #e2e8f0;
+  --text-secondary:#8899b3;
+  --text-tertiary: #5a6a84;
+  --text-ghost:    #3d4f6a;
+
+  --accent:        #d4a853;
+  --accent-dim:    #a07d3a;
+  --accent-glow:   rgba(212, 168, 83, 0.15);
+  --accent-hot:    #e8c468;
+
+  --info:          #6ec3d4;
+  --success:       #8dea9e;
+  --purple:        #c78dea;
+
+  --font-mono:     'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --font-serif:    'Instrument Serif', Georgia, serif;
+  --font-sans:     'DM Sans', 'Segoe UI', system-ui, sans-serif;
+
+  --radius:        8px;
+  --radius-sm:     4px;
+  --max-width:     760px;
+}
+
+/* === Reset === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-deep);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+/* === Scrollbar === */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
+* { scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+
+/* === Hero === */
+.hero {
+  position: relative;
+  padding: 72px 32px 56px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-dim);
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212, 168, 83, 0.06) 0%, transparent 70%),
+    var(--bg-surface);
+  overflow: hidden;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-dim), transparent);
+}
+
+.hero-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid rgba(212, 168, 83, 0.2);
+  padding: 4px 14px;
+  border-radius: 20px;
+  margin-bottom: 20px;
+}
+
+.hero h1 {
+  font-family: var(--font-serif);
+  font-size: 42px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 12px;
+}
+
+.hero p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* === Container === */
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 32px 80px;
+}
+
+/* === Section === */
+.section {
+  margin-top: 56px;
+}
+
+.section-number {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.section h2 {
+  font-family: var(--font-sans);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.section > p,
+.section > ul,
+.section > ol {
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.75;
+}
+
+.section ul, .section ol {
+  padding-left: 20px;
+}
+
+.section li {
+  margin-bottom: 6px;
+}
+
+.section li code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--bg-raised);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-dim);
+  color: var(--info);
+}
+
+/* === Subsection === */
+.subsection {
+  margin-top: 32px;
+}
+
+.subsection h3 {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.method-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-glow);
+  color: var(--accent);
+  border: 1px solid rgba(212, 168, 83, 0.15);
+  flex-shrink: 0;
+}
+
+.method-badge.easy {
+  background: rgba(141, 234, 158, 0.1);
+  color: var(--success);
+  border-color: rgba(141, 234, 158, 0.15);
+}
+
+.subsection > p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  line-height: 1.7;
+}
+
+/* === Code Blocks === */
+.code-block {
+  position: relative;
+  margin-top: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-dim);
+  background: var(--bg-code);
+  overflow: hidden;
+}
+
+.code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.code-lang {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+}
+
+.copy-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.copy-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: var(--accent-glow);
+}
+
+.copy-btn.copied {
+  color: var(--success);
+  border-color: rgba(141, 234, 158, 0.3);
+  background: rgba(141, 234, 158, 0.08);
+}
+
+.code-body {
+  padding: 14px 18px;
+  overflow-x: auto;
+}
+
+.code-body pre {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.65;
+  color: var(--text-primary);
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* Syntax colors */
+.code-body .kw  { color: var(--purple); }
+.code-body .str { color: var(--success); }
+.code-body .key { color: var(--info); }
+.code-body .cmt { color: var(--text-ghost); font-style: italic; }
+.code-body .cmd { color: var(--accent-hot); }
+.code-body .fl  { color: var(--accent); }
+.code-body .pnc { color: var(--text-tertiary); }
+
+/* === Inline code === */
+p code, li code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--bg-raised);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-dim);
+  color: var(--info);
+}
+
+/* === Note / Callout === */
+.callout {
+  margin-top: 20px;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-dim);
+  background: var(--bg-raised);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.callout.tip {
+  border-left: 3px solid var(--accent);
+}
+
+.callout.info {
+  border-left: 3px solid var(--info);
+}
+
+.callout-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.callout.tip .callout-label { color: var(--accent); }
+.callout.info .callout-label { color: var(--info); }
+
+/* === Tools Table === */
+.tools-table {
+  margin-top: 16px;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tools-table thead th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-raised);
+}
+
+.tools-table thead th:first-child {
+  border-radius: var(--radius) 0 0 0;
+}
+
+.tools-table thead th:last-child {
+  border-radius: 0 var(--radius) 0 0;
+}
+
+.tools-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--text-secondary);
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.tools-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tools-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.tool-name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent-hot);
+  white-space: nowrap;
+}
+
+.tool-params {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.param {
+  display: inline-block;
+  background: var(--bg-code);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border-dim);
+  margin: 1px 2px;
+  white-space: nowrap;
+}
+
+.param.required {
+  color: var(--info);
+}
+
+.param.optional {
+  color: var(--text-ghost);
+}
+
+/* === Steps === */
+.steps {
+  margin-top: 16px;
+  counter-reset: step;
+  list-style: none;
+  padding-left: 0;
+}
+
+.steps li {
+  position: relative;
+  padding-left: 36px;
+  margin-bottom: 16px;
+  counter-increment: step;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  border: 1px solid rgba(212, 168, 83, 0.2);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  text-align: center;
+}
+
+/* === Divider === */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-dim) 20%, var(--border-dim) 80%, transparent);
+  margin: 56px 0 0;
+}
+
+/* === Footer === */
+.footer {
+  margin-top: 40px;
+  text-align: center;
+  padding-bottom: 40px;
+}
+
+.footer p {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-ghost);
+  letter-spacing: 0.04em;
+}
+
+/* === Responsive === */
+@media (max-width: 600px) {
+  .hero { padding: 48px 20px 40px; }
+  .hero h1 { font-size: 30px; }
+  .container { padding: 0 20px 60px; }
+  .tools-table { font-size: 12px; }
+  .tools-table thead th,
+  .tools-table tbody td { padding: 8px 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<header class="hero">
+  <div class="hero-badge">Setup Guide</div>
+  <h1>Mockups MPC</h1>
+  <p>A self-hosted MCP server and gallery for design mockups. Connect your AI tools, send mockups via tool calls, and browse them in a beautiful gallery.</p>
+</header>
+
+<div class="container">
+
+  <!-- Section 1: Quick Start -->
+  <section class="section">
+    <div class="section-number">01</div>
+    <h2>Quick Start</h2>
+    <p>Mockups MPC is an MCP (Model Context Protocol) server that gives AI assistants the ability to store and manage design mockups. When connected, your AI tool gets six tools for sending, listing, updating, and managing mockups in a persistent gallery.</p>
+    <p>You need two things to get started:</p>
+    <ol>
+      <li>A running instance of the Mockups MPC server</li>
+      <li>An MCP-compatible AI tool (Claude Code, Claude Desktop, etc.) configured to connect to it</li>
+    </ol>
+  </section>
+
+  <!-- Section 2: Deploy the Server -->
+  <section class="section">
+    <div class="section-number">02</div>
+    <h2>Deploy the Server</h2>
+    <p>Clone the repository and start the server with Docker Compose.</p>
+
+    <ol class="steps">
+      <li>
+        <span>Clone the repo and configure your domain:</span>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">bash</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <div class="code-body"><pre>git clone https://github.com/yourusername/mockups-mpc.git
+cd mockups-mpc
+cp .env.example .env</pre></div>
+        </div>
+      </li>
+      <li>
+        <span>Edit <code>.env</code> and set your domain:</span>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">env</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <div class="code-body"><pre>BASE_URL=https://mockups.yourdomain.com</pre></div>
+        </div>
+      </li>
+      <li>
+        <span>Start the server:</span>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">bash</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <div class="code-body"><pre>docker compose up -d</pre></div>
+        </div>
+      </li>
+      <li>
+        <span>Verify the server is running:</span>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">bash</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <div class="code-body"><pre>curl https://mockups.yourdomain.com/health
+<span class="cmt"># {"status":"ok"}</span></pre></div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- Section 3: Connect Claude Code -->
+  <section class="section">
+    <div class="section-number">03</div>
+    <h2>Connect Claude Code</h2>
+    <p>There are three ways to connect Claude Code to your Mockups MPC server. Pick whichever suits your workflow.</p>
+
+    <!-- Method A -->
+    <div class="subsection">
+      <h3><span class="method-badge easy">Easiest</span> Method A: CLI Command</h3>
+      <p>Add the server directly from your terminal. This is the fastest way to get connected.</p>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-lang">bash</span>
+          <button class="copy-btn" type="button">Copy</button>
+        </div>
+        <div class="code-body"><pre>claude mcp add-json mockups <span class="str">'{"type":"http","url":"https://mockups.yourdomain.com/mcp"}'</span></pre></div>
+      </div>
+
+      <p>Or if you prefer SSE transport:</p>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-lang">bash</span>
+          <button class="copy-btn" type="button">Copy</button>
+        </div>
+        <div class="code-body"><pre>claude mcp add-json mockups <span class="str">'{"type":"sse","url":"https://mockups.yourdomain.com/mcp/sse"}'</span></pre></div>
+      </div>
+    </div>
+
+    <!-- Method B -->
+    <div class="subsection">
+      <h3><span class="method-badge">Project</span> Method B: Project-Level Config</h3>
+      <p>Create a <code>.mcp.json</code> file in your project root. The server will only be available when working in that project.</p>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-lang">.mcp.json</span>
+          <button class="copy-btn" type="button">Copy</button>
+        </div>
+        <div class="code-body"><pre><span class="pnc">{</span>
+  <span class="key">"mcpServers"</span><span class="pnc">:</span> <span class="pnc">{</span>
+    <span class="key">"mockups"</span><span class="pnc">:</span> <span class="pnc">{</span>
+      <span class="key">"type"</span><span class="pnc">:</span> <span class="str">"http"</span><span class="pnc">,</span>
+      <span class="key">"url"</span><span class="pnc">:</span> <span class="str">"https://mockups.yourdomain.com/mcp"</span>
+    <span class="pnc">}</span>
+  <span class="pnc">}</span>
+<span class="pnc">}</span></pre></div>
+      </div>
+    </div>
+
+    <!-- Method C -->
+    <div class="subsection">
+      <h3><span class="method-badge">Global</span> Method C: Global Config</h3>
+      <p>Add it to <code>~/.claude/.mcp.json</code> to make the server available in all your projects.</p>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-lang">~/.claude/.mcp.json</span>
+          <button class="copy-btn" type="button">Copy</button>
+        </div>
+        <div class="code-body"><pre><span class="pnc">{</span>
+  <span class="key">"mcpServers"</span><span class="pnc">:</span> <span class="pnc">{</span>
+    <span class="key">"mockups"</span><span class="pnc">:</span> <span class="pnc">{</span>
+      <span class="key">"type"</span><span class="pnc">:</span> <span class="str">"http"</span><span class="pnc">,</span>
+      <span class="key">"url"</span><span class="pnc">:</span> <span class="str">"https://mockups.yourdomain.com/mcp"</span>
+    <span class="pnc">}</span>
+  <span class="pnc">}</span>
+<span class="pnc">}</span></pre></div>
+      </div>
+
+      <div class="callout tip">
+        <div class="callout-label">Tip: Environment variable expansion</div>
+        You can use environment variables in the URL to avoid hardcoding your domain:
+      </div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-lang">~/.claude/.mcp.json</span>
+          <button class="copy-btn" type="button">Copy</button>
+        </div>
+        <div class="code-body"><pre><span class="pnc">{</span>
+  <span class="key">"mcpServers"</span><span class="pnc">:</span> <span class="pnc">{</span>
+    <span class="key">"mockups"</span><span class="pnc">:</span> <span class="pnc">{</span>
+      <span class="key">"type"</span><span class="pnc">:</span> <span class="str">"http"</span><span class="pnc">,</span>
+      <span class="key">"url"</span><span class="pnc">:</span> <span class="str">"${MOCKUPS_URL:-https://mockups.yourdomain.com}/mcp"</span>
+    <span class="pnc">}</span>
+  <span class="pnc">}</span>
+<span class="pnc">}</span></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Verify Connection -->
+  <section class="section">
+    <div class="section-number">04</div>
+    <h2>Verify Connection</h2>
+    <p>Once configured, verify that Claude Code can see the server.</p>
+
+    <ol class="steps">
+      <li>
+        <span>Start a Claude Code session in your terminal.</span>
+      </li>
+      <li>
+        <span>Ask Claude to list your mockups:</span>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">prompt</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <div class="code-body"><pre>List all my mockups in the gallery.</pre></div>
+        </div>
+      </li>
+      <li>
+        <span>Claude should call the <code>list_mockups</code> tool and return results from your gallery. On a fresh install, you will see this Setup Guide as the only entry.</span>
+      </li>
+    </ol>
+
+    <div class="callout info">
+      <div class="callout-label">Expected behavior</div>
+      When connected, Claude Code has access to 6 tools provided by the Mockups MPC server. You can verify by checking your MCP server list or asking Claude what tools are available from the mockups server.
+    </div>
+  </section>
+
+  <!-- Section 5: Available Tools -->
+  <section class="section">
+    <div class="section-number">05</div>
+    <h2>Available Tools</h2>
+    <p>The MCP server exposes six tools for managing your mockup gallery.</p>
+
+    <table class="tools-table">
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Description</th>
+          <th>Parameters</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tool-name">send_mockup</span></td>
+          <td>Send a mockup to the gallery for permanent storage. Supports HTML, SVG, PNG, and JPG.</td>
+          <td class="tool-params">
+            <span class="param required">project</span>
+            <span class="param required">title</span>
+            <span class="param required">content</span>
+            <span class="param required">content_type</span>
+            <span class="param optional">description</span>
+            <span class="param optional">tags</span>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tool-name">list_mockups</span></td>
+          <td>List mockups in reverse-chronological order, optionally filtered by project.</td>
+          <td class="tool-params">
+            <span class="param optional">project</span>
+            <span class="param optional">limit</span>
+            <span class="param optional">offset</span>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tool-name">get_mockup</span></td>
+          <td>Get a specific mockup by its UUID, including view and gallery URLs.</td>
+          <td class="tool-params">
+            <span class="param required">id</span>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tool-name">update_mockup</span></td>
+          <td>Update a mockup's metadata or replace its content entirely.</td>
+          <td class="tool-params">
+            <span class="param required">id</span>
+            <span class="param optional">title</span>
+            <span class="param optional">description</span>
+            <span class="param optional">tags</span>
+            <span class="param optional">content</span>
+            <span class="param optional">content_type</span>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tool-name">delete_mockup</span></td>
+          <td>Delete a mockup by ID. Removes both the database record and the stored file.</td>
+          <td class="tool-params">
+            <span class="param required">id</span>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tool-name">tag_mockup</span></td>
+          <td>Add or remove tags on an existing mockup without replacing all tags.</td>
+          <td class="tool-params">
+            <span class="param required">id</span>
+            <span class="param optional">add</span>
+            <span class="param optional">remove</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout tip">
+      <div class="callout-label">Tip: Content types</div>
+      For <code>send_mockup</code>, use <code>html</code> or <code>svg</code> with raw string content, and <code>png</code> or <code>jpg</code> with base64-encoded content.
+    </div>
+  </section>
+
+  <!-- Section 6: Other AI Tools -->
+  <section class="section">
+    <div class="section-number">06</div>
+    <h2>Other AI Tools</h2>
+    <p>Mockups MPC implements the standard Model Context Protocol, so any MCP-compatible client can connect. The server supports both Streamable HTTP and SSE transports.</p>
+    <ul>
+      <li><strong>Claude Desktop</strong> &mdash; add the server in Settings &rarr; Developer &rarr; MCP Servers using the same HTTP URL.</li>
+      <li><strong>Gemini CLI</strong> &mdash; configure MCP servers in your <code>settings.json</code> with the same URL pattern.</li>
+      <li><strong>Any MCP client</strong> &mdash; point it to <code>https://mockups.yourdomain.com/mcp</code> using HTTP transport, or <code>/mcp/sse</code> for SSE.</li>
+    </ul>
+    <p>The configuration shape is the same across all clients &mdash; you just need the URL and transport type.</p>
+  </section>
+
+  <div class="divider"></div>
+
+  <footer class="footer">
+    <p>Mockups MPC &mdash; Your AI-powered design gallery</p>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".copy-btn");
+    if (!btn) return;
+
+    var block = btn.closest(".code-block");
+    if (!block) return;
+
+    var pre = block.querySelector(".code-body pre");
+    if (!pre) return;
+
+    var text = pre.textContent;
+
+    if (!navigator.clipboard) return;
+
+    navigator.clipboard.writeText(text).then(function () {
+      btn.textContent = "Copied!";
+      btn.classList.add("copied");
+
+      setTimeout(function () {
+        btn.textContent = "Copy";
+        btn.classList.remove("copied");
+      }, 2000);
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

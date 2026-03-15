@@ -3,12 +3,14 @@ from fastapi import FastAPI
 
 from app.db import init_db
 from app.mcp_server import mcp, register_tools
+from app.seed import seed_if_empty
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     db = await init_db()
     app.state.db = db
     register_tools(lambda: app.state.db)
+    await seed_if_empty(db)
     yield
     await db.close()
 
