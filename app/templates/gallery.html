@@ -113,6 +113,26 @@
     return month + " " + d.getDate();
   }
 
+  function dateKey(iso) {
+    var d = new Date(iso);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function formatDateLabel(iso) {
+    var d = new Date(iso);
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var diff = today - target;
+
+    if (diff === 0) return "Today";
+    if (diff === 86400000) return "Yesterday";
+    if (diff < 604800000) return d.toLocaleString("en", { weekday: "long" });
+    var month = d.toLocaleString("en", { month: "short" });
+    if (d.getFullYear() === now.getFullYear()) return month + " " + d.getDate();
+    return month + " " + d.getDate() + ", " + d.getFullYear();
+  }
+
   /* ── Projects ── */
   async function loadProjects() {
     var resp = await fetch("/api/projects");
@@ -169,7 +189,7 @@
       state.exhausted = false;
       state.mockups = [];
       // clear feed but keep container
-      var items = feedContainer.querySelectorAll(".feed-item, .feed-loader");
+      var items = feedContainer.querySelectorAll(".feed-item, .feed-date, .feed-loader");
       items.forEach(function (el) { el.remove(); });
       feedStatusEl.textContent = "Loading...";
       feedStatusEl.style.display = "";
@@ -206,11 +226,9 @@
 
     var filtered = getFilteredMockups();
 
-    if (isReset) {
-      // remove all feed-items
-      var oldItems = feedContainer.querySelectorAll(".feed-item");
-      oldItems.forEach(function (el) { el.remove(); });
-    }
+    // Always clear and re-render with date separators
+    var oldItems = feedContainer.querySelectorAll(".feed-item, .feed-date");
+    oldItems.forEach(function (node) { node.remove(); });
 
     if (filtered.length === 0) {
       feedStatusEl.textContent = "No matches";
@@ -218,29 +236,17 @@
       return;
     }
 
-    var startIdx = isReset ? 0 : filtered.length - (state.mockups.length - (state.offset - state.limit));
-    if (startIdx < 0) startIdx = 0;
-    if (isReset) startIdx = 0;
-
-    // For simplicity, on reset re-render all; on append just render new items
-    if (isReset) {
-      var existingItems = feedContainer.querySelectorAll(".feed-item");
-      existingItems.forEach(function (el) { el.remove(); });
-    }
-
-    var renderList = isReset ? filtered : filtered;
-    if (isReset) {
-      renderList.forEach(function (mockup) {
-        feedContainer.appendChild(createFeedItem(mockup));
-      });
-    } else {
-      // just re-render all on filter for simplicity
-      var existItems = feedContainer.querySelectorAll(".feed-item");
-      existItems.forEach(function (el) { el.remove(); });
-      filtered.forEach(function (mockup) {
-        feedContainer.appendChild(createFeedItem(mockup));
-      });
-    }
+    var lastDate = null;
+    filtered.forEach(function (mockup) {
+      var dk = dateKey(mockup.created_at);
+      if (dk !== lastDate) {
+        lastDate = dk;
+        var sep = el("div", "feed-date");
+        sep.appendChild(text(formatDateLabel(mockup.created_at)));
+        feedContainer.appendChild(sep);
+      }
+      feedContainer.appendChild(createFeedItem(mockup));
+    });
   }
 
   function getFilteredMockups() {

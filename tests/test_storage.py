@@ -92,3 +92,5 @@ def test_content_too_large(data_dir):
     big = "x" * (MAX_CONTENT_SIZE + 1)
     with pytest.raises(ValueError, match="too large"):
         write_mockup_file("test-project", "big1", "html", big)
+
+

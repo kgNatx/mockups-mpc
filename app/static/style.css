@@ -219,6 +219,22 @@ body {
   padding: 4px 12px 20px;
 }
 
+/* -- Date Separators -- */
+.feed-date {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  padding: 12px 10px 6px;
+  user-select: none;
+}
+
+.feed-date:first-child {
+  padding-top: 4px;
+}
+
 .feed-item {
   position: relative;
   padding: 10px 12px 10px 16px;

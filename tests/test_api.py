@@ -64,3 +64,50 @@ async def test_list_projects(client):
     assert len(data) == 1
     assert data[0]["project"] == "Alpha"
     assert data[0]["count"] == 1
+
+@pytest.mark.asyncio
+async def test_upload_html(client, tmp_data_dir):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("mockup.html", b"<h1>Uploaded</h1>", "text/html")},
+        data={"project": "Upload Test", "title": "Via Upload", "tags": "ui,test"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["project"] == "Upload Test"
+    assert body["title"] == "Via Upload"
+    assert body["tags"] == ["ui", "test"]
+    assert "gallery_url" in body
+    assert (tmp_data_dir / body["file_path"]).exists()
+
+@pytest.mark.asyncio
+async def test_upload_png(client, tmp_data_dir):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("shot.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+        data={"project": "P", "title": "Screenshot"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["content_type"] == "png"
+    assert (tmp_data_dir / body["file_path"]).read_bytes() == b"\x89PNG\r\n\x1a\nfake"
+
+@pytest.mark.asyncio
+async def test_upload_unsupported_ext(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("anim.gif", b"GIF89a", "image/gif")},
+        data={"project": "P", "title": "Bad"},
+    )
+    assert resp.status_code == 400
+    assert "Unsupported" in resp.json()["error"]
+
+@pytest.mark.asyncio
+async def test_upload_no_tags(client, tmp_data_dir):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("page.html", b"<p>hi</p>", "text/html")},
+        data={"project": "P", "title": "No Tags"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tags"] == []

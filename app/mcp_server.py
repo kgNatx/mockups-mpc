@@ -17,9 +17,15 @@ from app.storage import slugify_project, write_mockup_file, delete_mockup_file, 
 mcp = FastMCP(
     name="Mockups Gallery",
     instructions=(
-        "This server is a permanent mockup gallery. After a successful send_mockup, "
-        "delete the local file — this server stores and hosts it. "
-        "Give the user the gallery URL so they can view it."
+        "This server is a permanent mockup gallery. "
+        "To send mockups efficiently, write the file locally then upload via curl: "
+        f"curl -X POST {config.BASE_URL}/api/upload -F file=@path -F project=name -F title=name "
+        '[-F description=text] [-F "tags=a,b,c"]. '
+        "This avoids passing large file content through the model context. "
+        "Give the user the gallery_url from the response so they can view it. "
+        "The server stores all content permanently — local files are safe to "
+        "clean up when no longer needed for reference. "
+        "To read a mockup's content later, curl the view_url returned by get_mockup."
     ),
 )
 
@@ -112,8 +118,7 @@ def register_tools(get_db):
     """Register MCP tools. `get_db` is a callable that returns the db connection."""
 
     @mcp.tool(
-        description="Sends a mockup to the gallery for permanent storage. "
-                    "The local file can be deleted after a successful send."
+        description="Sends a mockup to the gallery for permanent storage."
     )
     async def send_mockup(
         project: Annotated[str, Field(description="Project name")],
@@ -140,7 +145,7 @@ def register_tools(get_db):
     ) -> list[dict]:
         return await _list_mockups(db=get_db(), project=project, limit=limit, offset=offset)
 
-    @mcp.tool(name="get_mockup", description="Get a specific mockup by ID, including its view URL.")
+    @mcp.tool(name="get_mockup", description="Get a specific mockup by ID, including view and gallery URLs. To read the file content, curl the view_url.")
     async def get_mockup_tool(
         id: Annotated[str, Field(description="Mockup UUID")],
     ) -> dict:

@@ -2,6 +2,12 @@
 
 A self-hosted MCP server and gallery for AI-generated mockups. AI tools send mockups via MCP tool calls, the server stores and catalogs them, and you browse everything in a clean web gallery.
 
+## Prerequisites
+
+- **Docker** (for deployment) or **Python 3.12+** (for local development)
+- An MCP-compatible AI client (Claude Code, Claude Desktop, etc.)
+- Optional: Traefik reverse proxy (for production with TLS)
+
 ## Why
 
 Every time an AI tool generates a mockup, there's no consistent place for it to go. Files get scattered, sessions lose context, and there's no history. Mockups MPC solves this: the AI sends the mockup to the server, you view it in the gallery, and the local file gets cleaned up. One place for everything.
@@ -55,12 +61,12 @@ Single Docker container running a FastAPI app that serves two roles:
 |------|-------------|
 | `send_mockup` | Send HTML/SVG (raw string) or PNG/JPG (base64) to the gallery. Returns a gallery URL. |
 | `list_mockups` | List mockups reverse-chronologically, optionally filtered by project. |
-| `get_mockup` | Get a specific mockup by UUID with view and gallery URLs. |
+| `get_mockup` | Get a specific mockup by UUID with view and gallery URLs. Curl the `view_url` to read the file content. |
 | `update_mockup` | Update metadata (title, description, tags) or replace content. |
 | `delete_mockup` | Delete a mockup — removes both the DB record and file on disk. |
 | `tag_mockup` | Add or remove tags on an existing mockup. |
 
-The server instruction tells connecting AI tools: *"After a successful send_mockup, delete the local file — this server stores and hosts it."*
+The server stores all content permanently. AI clients can clean up local files when they're no longer needed, or retrieve content later via `get_mockup`.
 
 ## API Routes
 
@@ -71,6 +77,7 @@ The server instruction tells connecting AI tools: *"After a successful send_mock
 | `GET /api/mockups` | JSON listing with `limit`, `offset`, `project` filter |
 | `GET /api/mockups/{id}` | Single mockup metadata |
 | `GET /api/projects` | Project list with counts |
+| `POST /api/upload` | Upload a mockup file (multipart form: `file`, `project`, `title`, `description?`, `tags?`) |
 | `GET /health` | Health check |
 
 ## Setup
@@ -80,17 +87,33 @@ The server instruction tells connecting AI tools: *"After a successful send_mock
 ```bash
 git clone https://github.com/kgNatx/mockups-mpc.git
 cd mockups-mpc
-cp .env.example .env
-# Edit .env with your domain and Traefik network name
 ```
 
 ### 2. Deploy
 
+**Local (no Traefik):**
+
 ```bash
+docker compose -f docker-compose.local.yml up -d --build
+# Gallery available at http://localhost:8000
+```
+
+**Production (with Traefik):**
+
+```bash
+cp .env.example .env
+# Edit .env with your domain and Traefik network name
 docker compose up -d --build
 ```
 
-### 3. Connect Claude Code
+### 3. Verify
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
+
+### 4. Connect Claude Code
 
 ```bash
 claude mcp add-json mockups '{"type":"http","url":"https://your-domain.com/mcp"}'
@@ -109,7 +132,7 @@ Or add to `.mcp.json` (project-level) or `~/.claude/.mcp.json` (global):
 }
 ```
 
-### 4. Connect Claude Desktop
+### 5. Connect Claude Desktop
 
 Add to your Claude Desktop config file:
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -126,6 +149,26 @@ Add to your Claude Desktop config file:
   }
 }
 ```
+
+### 6. Tell your AI to use it
+
+Add instructions to your `CLAUDE.md` (or equivalent) so your AI uploads mockups via curl instead of passing file content through the model context:
+
+```markdown
+# Mockups
+
+When generating UI mockups, design concepts, or visual prototypes,
+write the file locally then upload it to the Mockups MPC gallery via curl:
+
+    curl -s -X POST https://your-domain.com/api/upload \
+      -F file=@/path/to/file.html -F project=name -F title=name \
+      [-F description=text] [-F "tags=a,b,c"]
+
+To read a mockup's content later, use `get_mockup` to get its
+`view_url`, then curl it.
+```
+
+Add to `~/.claude/CLAUDE.md` for all projects, or a project's `CLAUDE.md` for specific ones.
 
 ## Gallery UI
 
@@ -167,3 +210,7 @@ uvicorn app.main:app --reload
 ```
 
 41 tests covering storage, database, MCP tools, API routes, and gallery.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
