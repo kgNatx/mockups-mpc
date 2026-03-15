@@ -6,39 +6,39 @@
 <title>Mockups MPC — Setup Guide</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 /* === Tokens === */
 :root {
-  --bg-deep:       #0b0e17;
-  --bg-surface:    #111827;
-  --bg-raised:     #1a2236;
-  --bg-hover:      #1f2b42;
-  --bg-code:       #0d1220;
+  --bg-deep:       #09090b;
+  --bg-surface:    #0f0f12;
+  --bg-raised:     #18181b;
+  --bg-hover:      #1f1f23;
+  --bg-code:       #0c0c0e;
 
-  --border-dim:    #1e293b;
-  --border-subtle: #2a3a54;
-  --border-focus:  #3b5278;
+  --border-dim:    #1c1c20;
+  --border-subtle: #27272a;
+  --border-focus:  #3f3f46;
 
-  --text-primary:  #e2e8f0;
-  --text-secondary:#8899b3;
-  --text-tertiary: #5a6a84;
-  --text-ghost:    #3d4f6a;
+  --text-primary:  #fafafa;
+  --text-secondary:#a1a1aa;
+  --text-tertiary: #71717a;
+  --text-ghost:    #3f3f46;
 
-  --accent:        #d4a853;
-  --accent-dim:    #a07d3a;
-  --accent-glow:   rgba(212, 168, 83, 0.15);
-  --accent-hot:    #e8c468;
+  --accent:        #22d3ee;
+  --accent-dim:    #0891b2;
+  --accent-glow:   rgba(34, 211, 238, 0.08);
+  --accent-hot:    #67e8f9;
 
-  --info:          #6ec3d4;
-  --success:       #8dea9e;
-  --purple:        #c78dea;
+  --info:          #38bdf8;
+  --success:       #34d399;
+  --purple:        #a78bfa;
 
   --font-mono:     'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-  --font-serif:    'Instrument Serif', Georgia, serif;
-  --font-sans:     'DM Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-heading:  'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-sans:     'Space Grotesk', 'Inter', system-ui, sans-serif;
 
-  --radius:        8px;
+  --radius:        6px;
   --radius-sm:     4px;
   --max-width:     760px;
 }
@@ -62,7 +62,7 @@ body {
 }
 
 /* === Scrollbar === */
-::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
@@ -78,7 +78,7 @@ body {
   text-align: center;
   border-bottom: 1px solid var(--border-dim);
   background:
-    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212, 168, 83, 0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(34, 211, 238, 0.04) 0%, transparent 70%),
     var(--bg-surface);
   overflow: hidden;
 }
@@ -103,19 +103,19 @@ body {
   text-transform: uppercase;
   color: var(--accent);
   background: var(--accent-glow);
-  border: 1px solid rgba(212, 168, 83, 0.2);
+  border: 1px solid rgba(34, 211, 238, 0.15);
   padding: 4px 14px;
   border-radius: 20px;
   margin-bottom: 20px;
 }
 
 .hero h1 {
-  font-family: var(--font-serif);
-  font-size: 42px;
-  font-weight: 400;
-  font-style: italic;
+  font-family: var(--font-heading);
+  font-size: 40px;
+  font-weight: 700;
+  font-style: normal;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
   line-height: 1.15;
   margin-bottom: 12px;
 }
@@ -151,11 +151,11 @@ body {
 }
 
 .section h2 {
-  font-family: var(--font-sans);
+  font-family: var(--font-heading);
   font-size: 24px;
   font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   margin-bottom: 6px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border-dim);
@@ -194,7 +194,7 @@ body {
 }
 
 .subsection h3 {
-  font-family: var(--font-sans);
+  font-family: var(--font-heading);
   font-size: 17px;
   font-weight: 600;
   color: var(--text-primary);
@@ -202,6 +202,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  letter-spacing: -0.01em;
 }
 
 .method-badge {
@@ -214,14 +215,14 @@ body {
   border-radius: var(--radius-sm);
   background: var(--accent-glow);
   color: var(--accent);
-  border: 1px solid rgba(212, 168, 83, 0.15);
+  border: 1px solid rgba(34, 211, 238, 0.12);
   flex-shrink: 0;
 }
 
 .method-badge.easy {
-  background: rgba(141, 234, 158, 0.1);
+  background: rgba(52, 211, 153, 0.08);
   color: var(--success);
-  border-color: rgba(141, 234, 158, 0.15);
+  border-color: rgba(52, 211, 153, 0.15);
 }
 
 .subsection > p {
@@ -271,7 +272,7 @@ body {
   border-radius: var(--radius-sm);
   padding: 3px 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
 }
 
 .copy-btn:hover {
@@ -282,8 +283,8 @@ body {
 
 .copy-btn.copied {
   color: var(--success);
-  border-color: rgba(141, 234, 158, 0.3);
-  background: rgba(141, 234, 158, 0.08);
+  border-color: rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.06);
 }
 
 .code-body {
@@ -305,7 +306,7 @@ body {
 .code-body .kw  { color: var(--purple); }
 .code-body .str { color: var(--success); }
 .code-body .key { color: var(--info); }
-.code-body .cmt { color: var(--text-ghost); font-style: italic; }
+.code-body .cmt { color: var(--text-ghost); font-style: normal; }
 .code-body .cmd { color: var(--accent-hot); }
 .code-body .fl  { color: var(--accent); }
 .code-body .pnc { color: var(--text-tertiary); }
@@ -454,7 +455,7 @@ p code, li code {
   height: 22px;
   border-radius: 50%;
   background: var(--accent-glow);
-  border: 1px solid rgba(212, 168, 83, 0.2);
+  border: 1px solid rgba(34, 211, 238, 0.15);
   color: var(--accent);
   font-family: var(--font-mono);
   font-size: 11px;

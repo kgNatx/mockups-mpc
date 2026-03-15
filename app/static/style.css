@@ -1,44 +1,44 @@
 /* ============================================================
-   Mockups MPC — Dark Observatory
-   A control-room aesthetic for browsing design artifacts.
-   Deep space-navy, amber accents, calm precision.
+   Mockups MPC — Techno Chic Minimalist
+   Vercel-grade precision. Zinc surfaces, cyan pulse,
+   geometric sans, monospace metadata. Cool and controlled.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
 /* --- Tokens --- */
 :root {
-  --bg-deep:       #0b0e17;
-  --bg-surface:    #111827;
-  --bg-raised:     #1a2236;
-  --bg-hover:      #1f2b42;
-  --bg-active:     #25334f;
+  --bg-deep:       #09090b;
+  --bg-surface:    #0f0f12;
+  --bg-raised:     #18181b;
+  --bg-hover:      #1f1f23;
+  --bg-active:     #27272a;
 
-  --border-dim:    #1e293b;
-  --border-subtle: #2a3a54;
-  --border-focus:  #3b5278;
+  --border-dim:    #1c1c20;
+  --border-subtle: #27272a;
+  --border-focus:  #3f3f46;
 
-  --text-primary:  #e2e8f0;
-  --text-secondary:#8899b3;
-  --text-tertiary: #5a6a84;
-  --text-ghost:    #3d4f6a;
+  --text-primary:  #fafafa;
+  --text-secondary:#a1a1aa;
+  --text-tertiary: #71717a;
+  --text-ghost:    #3f3f46;
 
-  --accent:        #d4a853;
-  --accent-dim:    #a07d3a;
-  --accent-glow:   rgba(212, 168, 83, 0.15);
-  --accent-hot:    #e8c468;
+  --accent:        #22d3ee;
+  --accent-dim:    #0891b2;
+  --accent-glow:   rgba(34, 211, 238, 0.08);
+  --accent-hot:    #67e8f9;
 
-  --type-html:     #6ec3d4;
-  --type-png:      #c78dea;
-  --type-jpg:      #ea8d8d;
-  --type-svg:      #8dea9e;
+  --type-html:     #38bdf8;
+  --type-png:      #a78bfa;
+  --type-jpg:      #fb7185;
+  --type-svg:      #34d399;
 
   --font-mono:     'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-  --font-serif:    'Instrument Serif', Georgia, serif;
-  --font-sans:     'DM Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-heading:  'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-sans:     'Space Grotesk', 'Inter', system-ui, sans-serif;
 
   --sidebar-w:     320px;
-  --meta-h:        52px;
+  --meta-h:        48px;
   --radius:        6px;
   --radius-sm:     4px;
 
@@ -60,7 +60,7 @@ body {
 }
 
 /* --- Scrollbar --- */
-::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
@@ -93,27 +93,27 @@ body {
 
 /* -- Brand -- */
 .sidebar-brand {
-  padding: 24px 20px 16px;
+  padding: 20px 20px 16px;
   border-bottom: 1px solid var(--border-dim);
   flex-shrink: 0;
 }
 
 .sidebar-brand h1 {
-  font-family: var(--font-serif);
-  font-size: 22px;
-  font-weight: 400;
-  font-style: italic;
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 600;
+  font-style: normal;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 }
 
 .sidebar-brand .brand-sub {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 300;
-  color: var(--text-tertiary);
-  letter-spacing: 0.08em;
+  font-weight: 400;
+  color: var(--text-ghost);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-top: 4px;
 }
@@ -145,7 +145,7 @@ body {
   padding: 7px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.12s ease, color 0.12s ease;
   user-select: none;
 }
 
@@ -169,7 +169,7 @@ body {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
-  transition: color 0.15s ease;
+  transition: color 0.12s ease;
 }
 
 .project-count {
@@ -179,7 +179,7 @@ body {
   color: var(--text-ghost);
   min-width: 20px;
   text-align: right;
-  transition: color 0.15s ease;
+  transition: color 0.12s ease;
 }
 
 /* -- Filter -- */
@@ -199,17 +199,17 @@ body {
   font-size: 12px;
   font-weight: 400;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .filter-input::placeholder {
   color: var(--text-ghost);
-  font-style: italic;
+  font-style: normal;
 }
 
 .filter-input:focus {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(59, 82, 120, 0.2);
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 2px var(--accent-glow);
 }
 
 /* -- Feed -- */
@@ -224,7 +224,7 @@ body {
   padding: 10px 12px 10px 16px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.12s ease;
   border-left: 2px solid transparent;
   margin-bottom: 1px;
 }
@@ -238,7 +238,7 @@ body {
   width: 2px;
   background: transparent;
   border-radius: 1px;
-  transition: background 0.2s ease, box-shadow 0.3s ease;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .feed-item:hover {
@@ -256,7 +256,7 @@ body {
 
 .feed-item.active::before {
   background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
+  box-shadow: 0 0 6px var(--accent-glow);
 }
 
 .feed-title {
@@ -330,8 +330,8 @@ body {
 }
 
 .feed-loader .dot {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
   background: var(--text-ghost);
   margin: 0 3px;
@@ -358,15 +358,16 @@ body {
   position: relative;
 }
 
-/* Subtle grid texture on the viewer background */
+/* Subtle cross-hatch grid — technical blueprint feel */
 .main::before {
   content: '';
   position: absolute;
   inset: 0;
   background-image:
-    radial-gradient(circle at 1px 1px, var(--border-dim) 0.5px, transparent 0.5px);
-  background-size: 24px 24px;
-  opacity: 0.4;
+    linear-gradient(var(--border-dim) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.18;
   pointer-events: none;
   z-index: 0;
 }
@@ -393,6 +394,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 280px;
+  letter-spacing: -0.01em;
 }
 
 .meta-sep {
@@ -404,7 +406,7 @@ body {
 
 .meta-desc {
   font-size: 12px;
-  font-weight: 300;
+  font-weight: 400;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -428,7 +430,7 @@ body {
   border-radius: 3px;
   background: var(--accent-glow);
   color: var(--accent);
-  border: 1px solid rgba(212, 168, 83, 0.15);
+  border: 1px solid rgba(34, 211, 238, 0.12);
 }
 
 .meta-project {
@@ -461,7 +463,7 @@ body {
   padding: 4px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-dim);
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
 }
 
 .meta-popout:hover {
@@ -478,7 +480,7 @@ body {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-ghost);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* -- Viewer Frame -- */
@@ -505,7 +507,7 @@ body {
   object-fit: contain;
   border-radius: var(--radius);
   box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.4),
+    0 4px 24px rgba(0, 0, 0, 0.5),
     0 0 0 1px var(--border-dim);
 }
 
@@ -514,13 +516,13 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  animation: fadeIn 0.6s var(--ease-out) both;
+  animation: fadeIn 0.4s var(--ease-out) both;
 }
 
 .viewer-empty-icon {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--bg-raised);
   border: 1px solid var(--border-dim);
   display: flex;
@@ -545,40 +547,40 @@ body {
 
 /* -- Animations -- */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateX(-6px); }
+  from { opacity: 0; transform: translateX(-4px); }
   to   { opacity: 1; transform: translateX(0); }
 }
 
 .feed-item {
-  animation: slideIn 0.25s var(--ease-out) both;
+  animation: slideIn 0.18s var(--ease-out) both;
 }
 
-/* stagger the first 20 items */
-.feed-item:nth-child(1)  { animation-delay: 0.02s; }
-.feed-item:nth-child(2)  { animation-delay: 0.04s; }
-.feed-item:nth-child(3)  { animation-delay: 0.06s; }
-.feed-item:nth-child(4)  { animation-delay: 0.08s; }
-.feed-item:nth-child(5)  { animation-delay: 0.10s; }
-.feed-item:nth-child(6)  { animation-delay: 0.12s; }
-.feed-item:nth-child(7)  { animation-delay: 0.14s; }
-.feed-item:nth-child(8)  { animation-delay: 0.16s; }
-.feed-item:nth-child(9)  { animation-delay: 0.18s; }
-.feed-item:nth-child(10) { animation-delay: 0.20s; }
-.feed-item:nth-child(11) { animation-delay: 0.22s; }
-.feed-item:nth-child(12) { animation-delay: 0.24s; }
-.feed-item:nth-child(13) { animation-delay: 0.26s; }
-.feed-item:nth-child(14) { animation-delay: 0.28s; }
-.feed-item:nth-child(15) { animation-delay: 0.30s; }
-.feed-item:nth-child(16) { animation-delay: 0.32s; }
-.feed-item:nth-child(17) { animation-delay: 0.34s; }
-.feed-item:nth-child(18) { animation-delay: 0.36s; }
-.feed-item:nth-child(19) { animation-delay: 0.38s; }
-.feed-item:nth-child(20) { animation-delay: 0.40s; }
+/* stagger the first 20 items — snappy timing */
+.feed-item:nth-child(1)  { animation-delay: 0.01s; }
+.feed-item:nth-child(2)  { animation-delay: 0.025s; }
+.feed-item:nth-child(3)  { animation-delay: 0.04s; }
+.feed-item:nth-child(4)  { animation-delay: 0.055s; }
+.feed-item:nth-child(5)  { animation-delay: 0.07s; }
+.feed-item:nth-child(6)  { animation-delay: 0.085s; }
+.feed-item:nth-child(7)  { animation-delay: 0.10s; }
+.feed-item:nth-child(8)  { animation-delay: 0.115s; }
+.feed-item:nth-child(9)  { animation-delay: 0.13s; }
+.feed-item:nth-child(10) { animation-delay: 0.145s; }
+.feed-item:nth-child(11) { animation-delay: 0.16s; }
+.feed-item:nth-child(12) { animation-delay: 0.175s; }
+.feed-item:nth-child(13) { animation-delay: 0.19s; }
+.feed-item:nth-child(14) { animation-delay: 0.205s; }
+.feed-item:nth-child(15) { animation-delay: 0.22s; }
+.feed-item:nth-child(16) { animation-delay: 0.235s; }
+.feed-item:nth-child(17) { animation-delay: 0.25s; }
+.feed-item:nth-child(18) { animation-delay: 0.265s; }
+.feed-item:nth-child(19) { animation-delay: 0.28s; }
+.feed-item:nth-child(20) { animation-delay: 0.30s; }
 
 /* -- Responsive (collapse sidebar at narrow widths) -- */
 @media (max-width: 720px) {
