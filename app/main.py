@@ -1,6 +1,23 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-app = FastAPI(title="Mockups MPC")
+from app.db import init_db
+from app.mcp_server import mcp, register_tools
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    db = await init_db()
+    app.state.db = db
+    register_tools(lambda: app.state.db)
+    yield
+    await db.close()
+
+mcp_app = mcp.http_app(path="/")
+
+from fastmcp.utilities.lifespan import combine_lifespans
+app = FastAPI(title="Mockups MPC", lifespan=combine_lifespans(app_lifespan, mcp_app.lifespan))
+
+app.mount("/mcp", mcp_app)
 
 @app.get("/health")
 async def health():

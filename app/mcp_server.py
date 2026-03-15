@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 import aiosqlite
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from app import config
@@ -103,3 +104,84 @@ async def _tag_mockup(*, db: aiosqlite.Connection, id: str,
         current -= set(remove)
     await db_update_mockup(db, id, tags=sorted(current))
     return await _get_mockup(db=db, id=id)
+
+
+# --- FastMCP tool wrappers ---
+
+def register_tools(get_db):
+    """Register MCP tools. `get_db` is a callable that returns the db connection."""
+
+    @mcp.tool(
+        description="Sends a mockup to the gallery for permanent storage. "
+                    "The local file can be deleted after a successful send."
+    )
+    async def send_mockup(
+        project: Annotated[str, Field(description="Project name")],
+        title: Annotated[str, Field(description="Mockup title")],
+        content: Annotated[str, Field(description="HTML/SVG as raw string, PNG/JPG as base64")],
+        content_type: Annotated[str, Field(description="File type: html, png, jpg, or svg")],
+        description: Annotated[str | None, Field(description="Optional description")] = None,
+        tags: Annotated[list[str] | None, Field(description="Optional tags")] = None,
+    ) -> dict:
+        try:
+            return await _send_mockup(
+                db=get_db(), project=project, title=title,
+                description=description, content=content,
+                content_type=content_type, tags=tags
+            )
+        except ValueError as e:
+            raise ToolError(str(e))
+
+    @mcp.tool(name="list_mockups", description="List mockups, optionally filtered by project. Returns reverse-chronological order.")
+    async def list_mockups_tool(
+        project: Annotated[str | None, Field(description="Filter by project name")] = None,
+        limit: Annotated[int, Field(description="Max results", ge=1, le=200)] = 50,
+        offset: Annotated[int, Field(description="Offset for pagination", ge=0)] = 0,
+    ) -> list[dict]:
+        return await _list_mockups(db=get_db(), project=project, limit=limit, offset=offset)
+
+    @mcp.tool(name="get_mockup", description="Get a specific mockup by ID, including its view URL.")
+    async def get_mockup_tool(
+        id: Annotated[str, Field(description="Mockup UUID")],
+    ) -> dict:
+        try:
+            return await _get_mockup(db=get_db(), id=id)
+        except ValueError as e:
+            raise ToolError(str(e))
+
+    @mcp.tool(name="update_mockup", description="Update mockup metadata or replace its content.")
+    async def update_mockup_tool(
+        id: Annotated[str, Field(description="Mockup UUID")],
+        title: Annotated[str | None, Field(description="New title")] = None,
+        description: Annotated[str | None, Field(description="New description")] = None,
+        tags: Annotated[list[str] | None, Field(description="Replace all tags")] = None,
+        content: Annotated[str | None, Field(description="New content (replaces file)")] = None,
+        content_type: Annotated[str | None, Field(description="Required if content provided")] = None,
+    ) -> dict:
+        try:
+            return await _update_mockup(
+                db=get_db(), id=id, title=title, description=description,
+                tags=tags, content=content, content_type=content_type
+            )
+        except ValueError as e:
+            raise ToolError(str(e))
+
+    @mcp.tool(name="delete_mockup", description="Delete a mockup by ID. Removes both the database record and file.")
+    async def delete_mockup_tool(
+        id: Annotated[str, Field(description="Mockup UUID")],
+    ) -> dict:
+        try:
+            return await _delete_mockup(db=get_db(), id=id)
+        except ValueError as e:
+            raise ToolError(str(e))
+
+    @mcp.tool(name="tag_mockup", description="Add or remove tags on a mockup.")
+    async def tag_mockup_tool(
+        id: Annotated[str, Field(description="Mockup UUID")],
+        add: Annotated[list[str] | None, Field(description="Tags to add")] = None,
+        remove: Annotated[list[str] | None, Field(description="Tags to remove")] = None,
+    ) -> dict:
+        try:
+            return await _tag_mockup(db=get_db(), id=id, add=add, remove=remove)
+        except ValueError as e:
+            raise ToolError(str(e))
