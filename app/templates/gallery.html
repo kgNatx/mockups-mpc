@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mockups</title>
+  <title>Mockups MPC</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,8 +12,11 @@
     <!-- ===== SIDEBAR ===== -->
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <h1>Mockups</h1>
-        <div class="brand-sub">Design Artifacts</div>
+        <h1>Mockups MPC</h1>
+        <div class="brand-sub-row">
+          <div class="brand-sub">Design Artifacts</div>
+          <a class="brand-guide-link" id="guide-link" href="#" style="display:none">Setup Guide</a>
+        </div>
       </div>
 
       <div class="sidebar-projects">
@@ -263,8 +266,50 @@
     item.addEventListener("click", function () { selectMockup(mockup.id); });
 
     var title = el("div", "feed-title");
-    title.appendChild(text(mockup.title));
+    var titleText = el("span", "feed-title-text");
+    titleText.appendChild(text(mockup.title));
+    title.appendChild(titleText);
+    title.addEventListener("mouseenter", function () {
+      var overflow = titleText.offsetWidth - title.clientWidth;
+      if (overflow > 0) {
+        var dur = Math.max(2, overflow / 30);
+        title.style.setProperty("--scroll-dist", -(overflow + 8) + "px");
+        title.style.setProperty("--scroll-dur", dur + "s");
+        title.classList.add("scrolling");
+      }
+    });
+    title.addEventListener("mouseleave", function () {
+      title.classList.remove("scrolling");
+    });
     item.appendChild(title);
+
+    var actions = el("div", "feed-actions");
+
+    var copyBtn = el("button", "feed-action-btn feed-action-copy", { title: "Copy link", type: "button" });
+    copyBtn.appendChild(text("\u{1F517}"));
+    copyBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var galleryUrl = window.location.origin + "/?mockup=" + encodeURIComponent(mockup.id);
+      copyToClipboard(galleryUrl).then(function (ok) {
+        copyBtn.textContent = ok ? "\u2713" : "\u2717";
+        copyBtn.classList.add(ok ? "copied" : "failed");
+        setTimeout(function () {
+          copyBtn.textContent = "\u{1F517}";
+          copyBtn.classList.remove("copied", "failed");
+        }, 1500);
+      });
+    });
+    actions.appendChild(copyBtn);
+
+    var delBtn = el("button", "feed-action-btn feed-action-delete", { title: "Delete", type: "button" });
+    delBtn.appendChild(text("\u2715"));
+    delBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      deleteMockup(mockup.id);
+    });
+    actions.appendChild(delBtn);
+
+    item.appendChild(actions);
 
     var meta = el("div", "feed-meta");
 
@@ -283,6 +328,61 @@
 
     item.appendChild(meta);
     return item;
+  }
+
+  /* ── Clipboard ── */
+  function copyToClipboard(str) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(str).then(function () { return true; }).catch(function () { return fallbackCopy(str); });
+    }
+    return Promise.resolve(fallbackCopy(str));
+  }
+
+  function fallbackCopy(str) {
+    var ta = document.createElement("textarea");
+    ta.value = str;
+    ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  /* ── Delete ── */
+  async function deleteMockup(id) {
+    var resp = await fetch("/api/mockups/" + encodeURIComponent(id), { method: "DELETE" });
+    if (!resp.ok) return;
+
+    // Remove from state
+    state.mockups = state.mockups.filter(function (m) { return m.id !== id; });
+
+    // If we deleted the active mockup, clear the viewer
+    if (state.activeMockupId === id) {
+      state.activeMockupId = null;
+      clearChildren(viewer);
+      viewer.appendChild(createEmptyViewer());
+      clearChildren(metaBar);
+      metaBar.classList.add("empty");
+      var hint = el("span", "meta-hint");
+      hint.appendChild(text("Select a mockup to preview"));
+      metaBar.appendChild(hint);
+    }
+
+    renderFeed(true);
+    loadProjects();
+  }
+
+  function createEmptyViewer() {
+    var wrap = el("div", "viewer-empty");
+    var icon = el("div", "viewer-empty-icon");
+    icon.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="9"/></svg>');
+    wrap.appendChild(icon);
+    var txt = el("div", "viewer-empty-text");
+    txt.appendChild(text("No mockup selected"));
+    wrap.appendChild(txt);
+    return wrap;
   }
 
   /* ── Mockup Selection ── */
@@ -418,10 +518,51 @@
     return params.get("mockup") || null;
   }
 
+  /* ── Setup Guide Link ── */
+  function updateGuideLink() {
+    var guide = state.mockups.find(function (m) { return m.title === "Setup Guide"; });
+    var link = document.getElementById("guide-link");
+    if (guide && link) {
+      link.href = "#";
+      link.style.display = "";
+      link.addEventListener("click", function (e) {
+        e.preventDefault();
+        selectMockup(guide.id);
+      });
+    }
+  }
+
+  /* ── Auto-refresh ── */
+  var POLL_INTERVAL = 5000;
+
+  async function pollForUpdates() {
+    try {
+      var url = "/api/mockups?limit=1";
+      if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
+      var resp = await fetch(url);
+      var data = await resp.json();
+      if (data.length === 0 && state.mockups.length === 0) return;
+
+      // Check if the newest item changed or count differs
+      var latestId = data.length > 0 ? data[0].id : null;
+      var currentId = state.mockups.length > 0 ? state.mockups[0].id : null;
+      if (latestId !== currentId) {
+        await loadProjects();
+        await loadMockups(true);
+        updateGuideLink();
+      }
+    } catch (e) {
+      // silently skip on network errors
+    }
+  }
+
+  setInterval(pollForUpdates, POLL_INTERVAL);
+
   /* ── Init ── */
   async function init() {
     await loadProjects();
     await loadMockups(true);
+    updateGuideLink();
 
     var initialId = getInitialMockupId();
     if (initialId) {

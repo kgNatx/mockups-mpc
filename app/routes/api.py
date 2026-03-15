@@ -2,7 +2,7 @@ import base64
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
-from app.db import get_mockup, list_mockups, list_projects
+from app.db import get_mockup, list_mockups, list_projects, delete_mockup as db_delete_mockup
 from app.storage import BINARY_TYPES, TEXT_TYPES, VALID_TYPES, MAX_CONTENT_SIZE
 
 router = APIRouter(prefix="/api")
@@ -32,6 +32,16 @@ async def api_get_mockup(request: Request, mockup_id: str):
     if row is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
     return row
+
+@router.delete("/mockups/{mockup_id}")
+async def api_delete_mockup(request: Request, mockup_id: str):
+    from app.storage import delete_mockup_file
+    row = await get_mockup(request.app.state.db, mockup_id)
+    if row is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    delete_mockup_file(row["file_path"])
+    await db_delete_mockup(request.app.state.db, mockup_id)
+    return {"deleted": True, "id": mockup_id}
 
 @router.get("/projects")
 async def api_list_projects(request: Request):

@@ -108,6 +108,13 @@ body {
   line-height: 1.2;
 }
 
+.sidebar-brand .brand-sub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
 .sidebar-brand .brand-sub {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -115,7 +122,25 @@ body {
   color: var(--text-ghost);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  margin-top: 4px;
+}
+
+.brand-guide-link {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-ghost);
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-dim);
+  transition: all 0.12s ease;
+}
+
+.brand-guide-link:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: var(--accent-glow);
 }
 
 /* -- Projects Section -- */
@@ -284,6 +309,76 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.feed-title-text {
+  display: inline-block;
+}
+
+.feed-title.scrolling {
+  text-overflow: clip;
+}
+
+.feed-title.scrolling .feed-title-text {
+  animation: title-scroll var(--scroll-dur, 3s) linear infinite;
+}
+
+@keyframes title-scroll {
+  0%, 15%  { transform: translateX(0); }
+  85%, 100% { transform: translateX(var(--scroll-dist, -50px)); }
+}
+
+.feed-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.feed-item:hover .feed-actions {
+  opacity: 1;
+}
+
+.feed-action-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  color: var(--text-ghost);
+  transition: all 0.12s ease;
+}
+
+.feed-action-btn:hover {
+  background: var(--bg-raised);
+  border-color: var(--border-dim);
+  color: var(--text-secondary);
+}
+
+.feed-action-copy.copied {
+  color: var(--type-svg);
+}
+
+.feed-action-copy.failed {
+  color: var(--type-jpg);
+}
+
+.feed-action-delete:hover {
+  color: var(--type-jpg);
+  border-color: rgba(251, 113, 133, 0.2);
+  background: rgba(251, 113, 133, 0.06);
 }
 
 .feed-item.active .feed-title {

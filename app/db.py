@@ -70,7 +70,7 @@ async def list_mockups(db: aiosqlite.Connection, *, project_slug: str | None = N
 async def list_projects(db: aiosqlite.Connection) -> list[dict]:
     cursor = await db.execute(
         """SELECT project, project_slug, COUNT(*) as count
-           FROM mockups GROUP BY project_slug ORDER BY project"""
+           FROM mockups GROUP BY project_slug ORDER BY count DESC, project"""
     )
     return [dict(row) for row in await cursor.fetchall()]
 

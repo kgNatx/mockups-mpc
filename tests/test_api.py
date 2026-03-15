@@ -66,6 +66,33 @@ async def test_list_projects(client):
     assert data[0]["count"] == 1
 
 @pytest.mark.asyncio
+async def test_delete_mockup_api(client, tmp_data_dir):
+    # Create one first
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("m.html", b"<p>bye</p>", "text/html")},
+        data={"project": "P", "title": "To Delete"},
+    )
+    mockup_id = resp.json()["id"]
+    file_path = resp.json()["file_path"]
+    assert (tmp_data_dir / file_path).exists()
+
+    # Delete it
+    resp = await client.delete(f"/api/mockups/{mockup_id}")
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] is True
+    assert not (tmp_data_dir / file_path).exists()
+
+    # Verify gone
+    resp = await client.get(f"/api/mockups/{mockup_id}")
+    assert resp.status_code == 404
+
+@pytest.mark.asyncio
+async def test_delete_mockup_api_not_found(client):
+    resp = await client.delete("/api/mockups/nonexistent")
+    assert resp.status_code == 404
+
+@pytest.mark.asyncio
 async def test_upload_html(client, tmp_data_dir):
     resp = await client.post(
         "/api/upload",
