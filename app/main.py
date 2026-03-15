@@ -14,12 +14,17 @@ async def app_lifespan(app: FastAPI):
     yield
     await db.close()
 
-mcp_app = mcp.http_app(path="/")
+# Mount both transports: HTTP (streamable) for Claude Code, SSE for Claude Desktop
+mcp_http = mcp.http_app(path="/", transport="http")
+mcp_sse = mcp.http_app(path="/", transport="sse")
 
 from fastmcp.utilities.lifespan import combine_lifespans
-app = FastAPI(title="Mockups MPC", lifespan=combine_lifespans(app_lifespan, mcp_app.lifespan))
+app = FastAPI(title="Mockups MPC", lifespan=combine_lifespans(app_lifespan, mcp_http.lifespan))
 
-app.mount("/mcp", mcp_app)
+# SSE mount must come first (longer prefix match) — /mcp/sse/sse is the SSE endpoint, /mcp/sse/messages/ is the POST endpoint
+# HTTP mount at /mcp — /mcp/mcp is the streamable HTTP endpoint
+app.mount("/mcp/sse", mcp_sse)
+app.mount("/mcp", mcp_http)
 
 from app.routes.api import router as api_router
 app.include_router(api_router)

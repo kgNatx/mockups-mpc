@@ -1,7 +1,10 @@
+import os
 import pytest
 from contextlib import asynccontextmanager
 from httpx import AsyncClient, ASGITransport
 from app import config
+
+os.environ["SKIP_SEED"] = "1"
 
 @pytest.fixture
 def tmp_data_dir(tmp_path):

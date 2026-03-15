@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +11,8 @@ GUIDE_PATH = Path(__file__).parent / "static" / "setup-guide.html"
 
 async def seed_if_empty(db) -> None:
     """Insert the setup guide as the first mockup if DB is empty."""
+    if os.environ.get("SKIP_SEED"):
+        return
     existing = await list_mockups(db, limit=1, offset=0)
     if existing:
         return
