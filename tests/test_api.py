@@ -5,3 +5,62 @@ async def test_health(client):
     resp = await client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
+
+@pytest.mark.asyncio
+async def test_list_mockups_empty(client):
+    resp = await client.get("/api/mockups")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+@pytest.mark.asyncio
+async def test_create_and_list_via_api(client):
+    from app.db import init_db, insert_mockup
+    from app.storage import write_mockup_file
+    from datetime import datetime, timezone
+    db = await init_db()
+    now = datetime.now(timezone.utc)
+    write_mockup_file("test", "m1", "html", "<p>hi</p>")
+    await insert_mockup(db, id="m1", project="Test", project_slug="test",
+                        title="First", description=None, content_type="html",
+                        file_path="test/m1.html", tags=["ui"], created_at=now, updated_at=now)
+    resp = await client.get("/api/mockups")
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "First"
+
+@pytest.mark.asyncio
+async def test_get_mockup_api(client):
+    from app.db import init_db, insert_mockup
+    from app.storage import write_mockup_file
+    from datetime import datetime, timezone
+    db = await init_db()
+    now = datetime.now(timezone.utc)
+    write_mockup_file("test", "m2", "html", "<p>hello</p>")
+    await insert_mockup(db, id="m2", project="Test", project_slug="test",
+                        title="Second", description="desc", content_type="html",
+                        file_path="test/m2.html", tags=[], created_at=now, updated_at=now)
+    resp = await client.get("/api/mockups/m2")
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Second"
+
+@pytest.mark.asyncio
+async def test_get_mockup_not_found(client):
+    resp = await client.get("/api/mockups/nonexistent")
+    assert resp.status_code == 404
+
+@pytest.mark.asyncio
+async def test_list_projects(client):
+    from app.db import init_db, insert_mockup
+    from app.storage import write_mockup_file
+    from datetime import datetime, timezone
+    db = await init_db()
+    now = datetime.now(timezone.utc)
+    write_mockup_file("alpha", "a1", "html", "<p>a</p>")
+    await insert_mockup(db, id="a1", project="Alpha", project_slug="alpha",
+                        title="A1", description=None, content_type="html",
+                        file_path="alpha/a1.html", tags=[], created_at=now, updated_at=now)
+    resp = await client.get("/api/projects")
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["project"] == "Alpha"
+    assert data[0]["count"] == 1

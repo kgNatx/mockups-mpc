@@ -19,6 +19,9 @@ app = FastAPI(title="Mockups MPC", lifespan=combine_lifespans(app_lifespan, mcp_
 
 app.mount("/mcp", mcp_app)
 
+from app.routes.api import router as api_router
+app.include_router(api_router)
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
