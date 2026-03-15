@@ -1,0 +1,35 @@
+services:
+  mockups-mpc:
+    build: .
+    container_name: mockups-mpc
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      - BASE_URL=${BASE_URL}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+
+      - "traefik.http.routers.mockups-http.rule=Host(`${SITE_DOMAIN}`)"
+      - "traefik.http.routers.mockups-http.entrypoints=web"
+      - "traefik.http.routers.mockups-http.service=mockups"
+
+      - "traefik.http.routers.mockups-https.rule=Host(`${SITE_DOMAIN}`)"
+      - "traefik.http.routers.mockups-https.entrypoints=websecure"
+      - "traefik.http.routers.mockups-https.tls.certresolver=cloudflare"
+      - "traefik.http.routers.mockups-https.service=mockups"
+
+      - "traefik.http.services.mockups.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    name: ${TRAEFIK_NETWORK}
+    external: true
