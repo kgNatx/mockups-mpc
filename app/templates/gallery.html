@@ -263,7 +263,10 @@
   function createFeedItem(mockup) {
     var item = el("div", "feed-item" + (mockup.id === state.activeMockupId ? " active" : ""));
     item.setAttribute("data-id", mockup.id);
-    item.addEventListener("click", function () { selectMockup(mockup.id); });
+    item.addEventListener("click", function () {
+      if (state.activeMockupId === mockup.id) deselectMockup();
+      else selectMockup(mockup.id);
+    });
 
     var title = el("div", "feed-title");
     var titleText = el("span", "feed-title-text");
@@ -328,6 +331,26 @@
 
     item.appendChild(meta);
     return item;
+  }
+
+  /* ── Deselect ── */
+  function deselectMockup() {
+    state.activeMockupId = null;
+    var url = new URL(window.location);
+    url.searchParams.delete("mockup");
+    history.replaceState(null, "", url);
+
+    feedContainer.querySelectorAll(".feed-item").forEach(function (el) {
+      el.classList.remove("active");
+    });
+
+    clearChildren(viewer);
+    viewer.appendChild(createEmptyViewer());
+    clearChildren(metaBar);
+    metaBar.classList.add("empty");
+    var hint = el("span", "meta-hint");
+    hint.appendChild(text("Select a mockup to preview"));
+    metaBar.appendChild(hint);
   }
 
   /* ── Clipboard ── */
