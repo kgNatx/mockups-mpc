@@ -597,7 +597,7 @@ cp .env.example .env</pre></div>
           <span class="code-lang">bash</span>
           <button class="copy-btn" type="button">Copy</button>
         </div>
-        <div class="code-body"><pre>claude mcp add-json mockups <span class="str">'{"type":"http","url":"https://mockups.yourdomain.com/mcp"}'</span></pre></div>
+        <div class="code-body"><pre>claude mcp add-json mockups-gallery <span class="str">'{"type":"http","url":"https://mockups.yourdomain.com/mcp"}'</span></pre></div>
       </div>
 
       <p>Or if you prefer SSE transport:</p>
@@ -607,7 +607,7 @@ cp .env.example .env</pre></div>
           <span class="code-lang">bash</span>
           <button class="copy-btn" type="button">Copy</button>
         </div>
-        <div class="code-body"><pre>claude mcp add-json mockups <span class="str">'{"type":"sse","url":"https://mockups.yourdomain.com/mcp/sse"}'</span></pre></div>
+        <div class="code-body"><pre>claude mcp add-json mockups-gallery <span class="str">'{"type":"sse","url":"https://mockups.yourdomain.com/mcp/sse"}'</span></pre></div>
       </div>
     </div>
 
@@ -623,7 +623,7 @@ cp .env.example .env</pre></div>
         </div>
         <div class="code-body"><pre><span class="pnc">{</span>
   <span class="key">"mcpServers"</span><span class="pnc">:</span> <span class="pnc">{</span>
-    <span class="key">"mockups"</span><span class="pnc">:</span> <span class="pnc">{</span>
+    <span class="key">"mockups-gallery"</span><span class="pnc">:</span> <span class="pnc">{</span>
       <span class="key">"type"</span><span class="pnc">:</span> <span class="str">"http"</span><span class="pnc">,</span>
       <span class="key">"url"</span><span class="pnc">:</span> <span class="str">"https://mockups.yourdomain.com/mcp"</span>
     <span class="pnc">}</span>
@@ -644,7 +644,7 @@ cp .env.example .env</pre></div>
         </div>
         <div class="code-body"><pre><span class="pnc">{</span>
   <span class="key">"mcpServers"</span><span class="pnc">:</span> <span class="pnc">{</span>
-    <span class="key">"mockups"</span><span class="pnc">:</span> <span class="pnc">{</span>
+    <span class="key">"mockups-gallery"</span><span class="pnc">:</span> <span class="pnc">{</span>
       <span class="key">"type"</span><span class="pnc">:</span> <span class="str">"http"</span><span class="pnc">,</span>
       <span class="key">"url"</span><span class="pnc">:</span> <span class="str">"https://mockups.yourdomain.com/mcp"</span>
     <span class="pnc">}</span>
@@ -664,7 +664,7 @@ cp .env.example .env</pre></div>
         </div>
         <div class="code-body"><pre><span class="pnc">{</span>
   <span class="key">"mcpServers"</span><span class="pnc">:</span> <span class="pnc">{</span>
-    <span class="key">"mockups"</span><span class="pnc">:</span> <span class="pnc">{</span>
+    <span class="key">"mockups-gallery"</span><span class="pnc">:</span> <span class="pnc">{</span>
       <span class="key">"type"</span><span class="pnc">:</span> <span class="str">"http"</span><span class="pnc">,</span>
       <span class="key">"url"</span><span class="pnc">:</span> <span class="str">"${MOCKUPS_URL:-https://mockups.yourdomain.com}/mcp"</span>
     <span class="pnc">}</span>
@@ -846,7 +846,7 @@ its <span class="cmd">view_url</span>, then curl it.</pre></div>
       </div>
       <div class="code-body"><pre><span class="pnc">{</span>
   <span class="key">"mcpServers"</span><span class="pnc">:</span> <span class="pnc">{</span>
-    <span class="key">"mockups"</span><span class="pnc">:</span> <span class="pnc">{</span>
+    <span class="key">"mockups-gallery"</span><span class="pnc">:</span> <span class="pnc">{</span>
       <span class="key">"type"</span><span class="pnc">:</span> <span class="str">"sse"</span><span class="pnc">,</span>
       <span class="key">"url"</span><span class="pnc">:</span> <span class="str">"https://mockups.yourdomain.com/mcp/sse"</span>
     <span class="pnc">}</span>

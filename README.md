@@ -122,7 +122,7 @@ curl http://localhost:8000/health
 ### 4. Connect Claude Code
 
 ```bash
-claude mcp add-json mockups '{"type":"http","url":"https://your-domain.com/mcp"}'
+claude mcp add-json mockups-gallery '{"type":"http","url":"https://your-domain.com/mcp"}'
 ```
 
 Or add to `.mcp.json` (project-level) or `~/.claude/.mcp.json` (global):
@@ -130,7 +130,7 @@ Or add to `.mcp.json` (project-level) or `~/.claude/.mcp.json` (global):
 ```json
 {
   "mcpServers": {
-    "mockups": {
+    "mockups-gallery": {
       "type": "http",
       "url": "https://your-domain.com/mcp"
     }
@@ -148,7 +148,7 @@ Add to your Claude Desktop config file:
 ```json
 {
   "mcpServers": {
-    "mockups": {
+    "mockups-gallery": {
       "type": "sse",
       "url": "https://your-domain.com/mcp/sse"
     }

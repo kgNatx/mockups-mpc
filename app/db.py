@@ -81,7 +81,8 @@ _UNSET = object()
 async def update_mockup(db: aiosqlite.Connection, mockup_id: str, *,
                          title: str | None = None, description=_UNSET,
                          tags: list[str] | None = None, file_path: str | None = None,
-                         content_type: str | None = None) -> bool:
+                         content_type: str | None = None,
+                         created_at: str | None = None) -> bool:
     sets = []
     params = []
     if title is not None:
@@ -99,6 +100,9 @@ async def update_mockup(db: aiosqlite.Connection, mockup_id: str, *,
     if content_type is not None:
         sets.append("content_type = ?")
         params.append(content_type)
+    if created_at is not None:
+        sets.append("created_at = ?")
+        params.append(created_at)
     if not sets:
         return False
     sets.append("updated_at = ?")

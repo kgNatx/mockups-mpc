@@ -112,6 +112,21 @@ async def _tag_mockup(*, db: aiosqlite.Connection, id: str,
     return await _get_mockup(db=db, id=id)
 
 
+async def _set_created_at(*, db: aiosqlite.Connection, id: str,
+                            created_at: str) -> dict:
+    existing = await get_mockup(db, id)
+    if existing is None:
+        raise ValueError(f"Mockup not found: {id}")
+    # Validate ISO format
+    from datetime import datetime as dt
+    try:
+        dt.fromisoformat(created_at)
+    except ValueError:
+        raise ValueError(f"Invalid ISO 8601 datetime: {created_at!r}")
+    await db_update_mockup(db, id, created_at=created_at)
+    return await _get_mockup(db=db, id=id)
+
+
 # --- FastMCP tool wrappers ---
 
 def register_tools(get_db):
@@ -188,5 +203,15 @@ def register_tools(get_db):
     ) -> dict:
         try:
             return await _tag_mockup(db=get_db(), id=id, add=add, remove=remove)
+        except ValueError as e:
+            raise ToolError(str(e))
+
+    @mcp.tool(name="set_created_at", description="Change the created date of a mockup. Useful for backdating uploads or reordering the timeline.")
+    async def set_created_at_tool(
+        id: Annotated[str, Field(description="Mockup UUID")],
+        created_at: Annotated[str, Field(description="ISO 8601 datetime, e.g. 2026-03-10T14:30:00+00:00")],
+    ) -> dict:
+        try:
+            return await _set_created_at(db=get_db(), id=id, created_at=created_at)
         except ValueError as e:
             raise ToolError(str(e))

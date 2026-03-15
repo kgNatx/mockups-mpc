@@ -2,7 +2,7 @@ import pytest
 from app.db import init_db
 from app.mcp_server import (
     _send_mockup, _list_mockups, _get_mockup,
-    _update_mockup, _delete_mockup, _tag_mockup
+    _update_mockup, _delete_mockup, _tag_mockup, _set_created_at
 )
 
 @pytest.fixture
@@ -126,3 +126,24 @@ async def test_tag_mockup_add_remove(db):
     assert "c" in result["tags"]
     assert "a" not in result["tags"]
     assert "b" in result["tags"]
+
+@pytest.mark.asyncio
+async def test_set_created_at(db):
+    sent = await _send_mockup(
+        db=db, project="P", title="T",
+        description=None, content="<p>x</p>",
+        content_type="html", tags=[]
+    )
+    new_date = "2025-01-15T12:00:00+00:00"
+    result = await _set_created_at(db=db, id=sent["id"], created_at=new_date)
+    assert result["created_at"] == new_date
+
+@pytest.mark.asyncio
+async def test_set_created_at_invalid(db):
+    sent = await _send_mockup(
+        db=db, project="P", title="T",
+        description=None, content="<p>x</p>",
+        content_type="html", tags=[]
+    )
+    with pytest.raises(ValueError, match="Invalid ISO"):
+        await _set_created_at(db=db, id=sent["id"], created_at="not-a-date")
