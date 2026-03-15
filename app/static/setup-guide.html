@@ -287,6 +287,12 @@ body {
   background: rgba(52, 211, 153, 0.06);
 }
 
+.copy-btn.failed {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.06);
+}
+
 .code-body {
   padding: 14px 18px;
   overflow-x: auto;
@@ -840,6 +846,42 @@ cp .env.example .env</pre></div>
 (function () {
   "use strict";
 
+  function copyText(text) {
+    // Try modern API first, fall back to execCommand for sandboxed iframes
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () {
+        return true;
+      }).catch(function () {
+        return fallbackCopy(text);
+      });
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "-9999px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function showFeedback(btn, success) {
+    btn.textContent = success ? "Copied!" : "Failed";
+    btn.classList.add(success ? "copied" : "failed");
+    setTimeout(function () {
+      btn.textContent = "Copy";
+      btn.classList.remove("copied", "failed");
+    }, 2000);
+  }
+
   document.addEventListener("click", function (e) {
     var btn = e.target.closest(".copy-btn");
     if (!btn) return;
@@ -850,18 +892,8 @@ cp .env.example .env</pre></div>
     var pre = block.querySelector(".code-body pre");
     if (!pre) return;
 
-    var text = pre.textContent;
-
-    if (!navigator.clipboard) return;
-
-    navigator.clipboard.writeText(text).then(function () {
-      btn.textContent = "Copied!";
-      btn.classList.add("copied");
-
-      setTimeout(function () {
-        btn.textContent = "Copy";
-        btn.classList.remove("copied");
-      }, 2000);
+    copyText(pre.textContent).then(function (ok) {
+      showFeedback(btn, ok !== false);
     });
   });
 })();
