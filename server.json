@@ -1,0 +1,42 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kgnatx/mockups-gallery",
+  "title": "Mockups Gallery",
+  "description": "Self-hosted MCP server and gallery for AI-generated mockups. Token-efficient uploads via curl, browse in a clean web gallery.",
+  "repository": {
+    "url": "https://github.com/kgNatx/mockups-mpc",
+    "source": "github"
+  },
+  "version": "1.2.0",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/kgnatx/mockups-mpc:1.2.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://{host}/mcp",
+      "variables": {
+        "host": {
+          "description": "Your Mockups MPC server hostname (e.g., mockups.yourdomain.com)",
+          "isRequired": true
+        }
+      }
+    },
+    {
+      "type": "sse",
+      "url": "https://{host}/mcp/sse",
+      "variables": {
+        "host": {
+          "description": "Your Mockups MPC server hostname (e.g., mockups.yourdomain.com)",
+          "isRequired": true
+        }
+      }
+    }
+  ]
+}
