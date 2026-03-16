@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-03-16
+
+### Added
+- Pre-built Docker image on GHCR (`ghcr.io/kgnatx/mockups-mpc`)
+- GitHub Actions workflow for automated Docker builds on version tags
+- `set_created_at` MCP tool for backdating or reordering mockups
+- `DELETE /api/mockups/{id}` REST endpoint
+- Delete and copy-link action buttons on gallery feed items (hover to reveal)
+- Auto-refresh polling (5s) — gallery updates without page reload
+- Date separators in the chronological feed
+- Long title scroll on hover
+- Click-to-deselect in gallery viewer
+- Setup Guide link in sidebar header
+- Gallery screenshot in README
+- CONTRIBUTING.md, issue templates, GitHub Actions CI, pyproject.toml
+
+### Changed
+- MCP server name in setup docs changed from `mockups` to `mockups-gallery`
+- Projects sorted by mockup count (descending) in sidebar
+- Sidebar header renamed to "Mockups MPC"
+- `docker-compose.local.yml` defaults to pre-built GHCR image
+- UTF-8 decode error handling in upload endpoint
+- API delete route reuses `_delete_mockup` instead of duplicating logic
+
+### Removed
+- Internal planning docs from repository
+
 ## [1.1.0] - 2026-03-15
 
 ### Added
