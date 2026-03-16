@@ -99,11 +99,17 @@ cd mockups-mpc
 
 ### 2. Deploy
 
-**Local (no Traefik):**
+**Quick start (pre-built image):**
+
+```bash
+docker compose -f docker-compose.local.yml up -d
+# Gallery available at http://localhost:8000
+```
+
+**Build from source:**
 
 ```bash
 docker compose -f docker-compose.local.yml up -d --build
-# Gallery available at http://localhost:8000
 ```
 
 **Production (with Traefik):**

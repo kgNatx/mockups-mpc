@@ -1,6 +1,8 @@
 services:
   mockups-mpc:
-    build: .
+    image: ghcr.io/kgnatx/mockups-mpc:latest
+    # Or build from source:
+    # build: .
     container_name: mockups-mpc
     restart: unless-stopped
     ports:
