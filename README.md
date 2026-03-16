@@ -4,6 +4,8 @@ A self-hosted MCP server and gallery for AI-generated mockups. AI tools send moc
 
 **Token-efficient by design.** MCP tool parameters flow through the model context, so sending a large HTML file via a tool call wastes tokens. Mockups MPC provides an HTTP upload endpoint (`POST /api/upload`) — the AI writes the file locally and `curl`s it to the server, keeping file content entirely out of the model context. MCP tools handle lightweight operations only: listing, metadata, tagging, and deletion.
 
+![Mockups MPC Gallery](docs/gallery-screenshot.png)
+
 ## Prerequisites
 
 - **Docker** (for deployment) or **Python 3.12+** (for local development)

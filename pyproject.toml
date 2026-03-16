@@ -1,0 +1,10 @@
+[project]
+name = "mockups-mpc"
+version = "1.1.0"
+description = "A mockup management server with MCP (Model Context Protocol) integration"
+license = "MIT"
+requires-python = ">= 3.12"
+
+[project.urls]
+Homepage = "https://github.com/kgNatx/mockups-mpc"
+Repository = "https://github.com/kgNatx/mockups-mpc"
