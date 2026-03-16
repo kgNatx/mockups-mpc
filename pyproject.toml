@@ -1,6 +1,6 @@
 [project]
 name = "mockups-mpc"
-version = "1.2.0"
+version = "1.2.1"
 description = "A mockup management server with MCP (Model Context Protocol) integration"
 license = "MIT"
 requires-python = ">= 3.12"
