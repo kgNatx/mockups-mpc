@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ app/
 
-LABEL io.modelcontextprotocol.server.name="io.github.kgnatx/mockups-gallery"
+LABEL io.modelcontextprotocol.server.name="io.github.kgNatx/mockups-gallery"
 
 EXPOSE 8000
 
