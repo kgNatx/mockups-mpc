@@ -7,11 +7,11 @@
     "url": "https://github.com/kgNatx/mockups-mpc",
     "source": "github"
   },
-  "version": "1.2.1",
+  "version": "1.2.2",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/kgnatx/mockups-mpc:1.2.1",
+      "identifier": "ghcr.io/kgnatx/mockups-mpc:1.2.2",
       "transport": {
         "type": "stdio"
       }
