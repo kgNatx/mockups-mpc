@@ -701,3 +701,94 @@ body {
 @media (max-width: 720px) {
   :root { --sidebar-w: 260px; }
 }
+
+/* ============================================================
+   FAVORITES SIDEBAR ITEM
+   ============================================================ */
+/* Favorites pseudo-project */
+.project-item.favorites .project-name { color: var(--star); display: flex; align-items: center; gap: 7px; }
+.project-item.favorites .fav-star { font-size: 12px; line-height: 1; }
+.project-item.favorites.active { background: var(--star-glow); }
+.project-item.favorites.active .project-name,
+.project-item.favorites.active .project-count { color: var(--star); }
+.project-divider { height: 1px; background: var(--border-dim); margin: 8px 8px; }
+
+/* ============================================================
+   SEARCH ICON + SORT SEGMENTED CONTROL
+   ============================================================ */
+/* Search input gets a leading icon */
+.search-wrap { position: relative; display: flex; align-items: center; }
+.search-wrap .search-icon {
+  position: absolute; left: 10px; width: 13px; height: 13px;
+  stroke: var(--text-ghost); fill: none; stroke-width: 1.6; pointer-events: none;
+}
+.search-wrap .filter-input { padding-left: 30px; }
+
+/* Sort segmented control */
+.sort-seg {
+  display: flex; margin-top: 8px; background: var(--bg-raised);
+  border: 1px solid var(--border-dim); border-radius: var(--radius); padding: 2px; gap: 2px;
+}
+.sort-opt {
+  flex: 1; text-align: center; font-family: var(--font-mono); font-size: 9.5px;
+  font-weight: 500; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--text-tertiary); padding: 5px 4px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: all 0.12s ease; user-select: none;
+}
+.sort-opt:hover { color: var(--text-secondary); }
+.sort-opt.active { background: var(--bg-active); color: var(--accent); }
+.sort-opt.active.fav-sort { color: var(--star); }
+
+/* ============================================================
+   FEED STAR BUTTON
+   ============================================================ */
+/* Star button on feed items */
+.feed-star {
+  position: absolute; right: 10px; top: 9px; width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer; font-size: 13px;
+  line-height: 1; padding: 0; color: var(--text-ghost); z-index: 3;
+  opacity: 0; transition: opacity 0.12s ease, color 0.12s ease, transform 0.12s var(--ease-spring);
+}
+.feed-item:hover .feed-star { opacity: 0.55; }
+.feed-item:hover .feed-star:hover { opacity: 1; color: var(--star); transform: scale(1.15); }
+.feed-star.starred { opacity: 1; color: var(--star); }
+/* When starred, park the star on the left so favorites scan down the left edge */
+.feed-star.starred { right: auto; left: 4px; top: 50%; transform: translateY(-50%); }
+.feed-item:hover .feed-star.starred { opacity: 1; }
+.feed-item .feed-title { transition: padding 0.12s ease; }
+.feed-item.has-fav .feed-title { padding-left: 14px; }
+
+/* ============================================================
+   VIEWER CHROME — VIEWPORT TOGGLES + FULLSCREEN + META STAR
+   ============================================================ */
+/* Viewport size toggles in the meta bar */
+.viewport-seg {
+  display: flex; background: var(--bg-raised); border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm); padding: 2px; gap: 2px; flex-shrink: 0;
+}
+.vp-opt {
+  display: flex; align-items: center; gap: 4px; font-family: var(--font-mono);
+  font-size: 9px; font-weight: 500; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--text-tertiary); padding: 4px 8px; border-radius: 3px; cursor: pointer;
+  transition: all 0.12s ease; user-select: none;
+}
+.vp-opt:hover { color: var(--text-secondary); }
+.vp-opt.active { background: var(--bg-active); color: var(--accent); }
+.vp-opt svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+.meta-icon-btn {
+  display: flex; align-items: center; justify-content: center; width: 28px; height: 24px;
+  border: 1px solid var(--border-dim); border-radius: var(--radius-sm);
+  background: var(--bg-raised); color: var(--text-tertiary); cursor: pointer;
+  flex-shrink: 0; transition: all 0.12s ease;
+}
+.meta-icon-btn:hover { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
+.meta-icon-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+.meta-title .meta-star { color: var(--star); font-size: 12px; margin-right: 5px; }
+
+/* Constrain the iframe width for viewport preview */
+.viewer.vp-mobile .viewer-iframe  { width: 375px; }
+.viewer.vp-tablet .viewer-iframe  { width: 768px; }
+.viewer .viewer-iframe { transition: width 0.3s var(--ease-out); }
