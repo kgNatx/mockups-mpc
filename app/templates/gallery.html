@@ -25,14 +25,19 @@
       </div>
 
       <div class="sidebar-filter">
-        <input
-          type="text"
-          class="filter-input"
-          id="filter-input"
-          placeholder="Filter by title..."
-          autocomplete="off"
-          spellcheck="false"
-        >
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+          <input
+            type="text" class="filter-input" id="filter-input"
+            placeholder="Search title, description, tags…"
+            autocomplete="off" spellcheck="false"
+          >
+        </div>
+        <div class="sort-seg" id="sort-seg">
+          <div class="sort-opt active" data-sort="newest">Newest</div>
+          <div class="sort-opt" data-sort="oldest">Oldest</div>
+          <div class="sort-opt fav-sort" data-sort="favorites">★ First</div>
+        </div>
       </div>
 
       <div class="sidebar-feed" id="feed-container">
@@ -75,6 +80,7 @@
     activeMockupId: null,
     filterText: "",
     sort: "newest",
+    favoritesCount: 0,
     offset: 0,
     limit: 50,
     loading: false,
@@ -146,8 +152,30 @@
     renderProjects();
   }
 
+  async function loadFavoritesCount() {
+    try {
+      var resp = await fetch("/api/favorites/count");
+      var data = await resp.json();
+      state.favoritesCount = data.count || 0;
+    } catch (e) { /* leave previous value */ }
+  }
+
   function renderProjects() {
     clearChildren(projectListEl);
+
+    // Favorites pseudo-item
+    var favItem = el("li", "project-item favorites" + (state.activeProject === FAVORITES ? " active" : ""));
+    favItem.addEventListener("click", function () { selectProject(FAVORITES); });
+    var favName = el("span", "project-name");
+    var favStar = el("span", "fav-star");
+    favStar.appendChild(text("★"));
+    favName.appendChild(favStar);
+    favName.appendChild(text("Favorites"));
+    var favCount = el("span", "project-count");
+    favCount.appendChild(text(String(state.favoritesCount || 0)));
+    favItem.appendChild(favName);
+    favItem.appendChild(favCount);
+    projectListEl.appendChild(favItem);
 
     // "All" item
     var allItem = el("li", "project-item" + (state.activeProject === null ? " active" : ""));
@@ -160,6 +188,8 @@
     allItem.appendChild(allName);
     allItem.appendChild(allCount);
     projectListEl.appendChild(allItem);
+
+    projectListEl.appendChild(el("div", "project-divider"));
 
     state.projects.forEach(function (proj) {
       var item = el("li", "project-item" + (state.activeProject === proj.project_slug ? " active" : ""));
@@ -529,6 +559,17 @@
     }, 200);
   });
 
+  /* ── Sort Control ── */
+  var sortSeg = document.getElementById("sort-seg");
+  sortSeg.addEventListener("click", function (e) {
+    var opt = e.target.closest(".sort-opt");
+    if (!opt) return;
+    sortSeg.querySelectorAll(".sort-opt").forEach(function (o) { o.classList.remove("active"); });
+    opt.classList.add("active");
+    state.sort = opt.getAttribute("data-sort");
+    loadMockups(true);
+  });
+
   /* ── Infinite Scroll ── */
   feedContainer.addEventListener("scroll", function () {
     if (state.loading || state.exhausted) return;
@@ -587,6 +628,8 @@
   /* ── Init ── */
   async function init() {
     await loadProjects();
+    await loadFavoritesCount();
+    renderProjects();
     await loadMockups(true);
     updateGuideLink();
 
