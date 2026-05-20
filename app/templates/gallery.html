@@ -66,12 +66,15 @@
   "use strict";
 
   /* ── State ── */
+  var FAVORITES = "__favorites__";   // sentinel for state.activeProject
+
   var state = {
     projects: [],
     mockups: [],
-    activeProject: null,   // null = all
+    activeProject: null,   // null = all, FAVORITES = favorites filter, else a project slug
     activeMockupId: null,
     filterText: "",
+    sort: "newest",
     offset: 0,
     limit: 50,
     loading: false,
@@ -198,8 +201,16 @@
       feedStatusEl.style.display = "";
     }
 
-    var url = "/api/mockups?limit=" + state.limit + "&offset=" + state.offset;
-    if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
+    var url = "/api/mockups?limit=" + state.limit + "&offset=" + state.offset
+            + "&sort=" + encodeURIComponent(state.sort);
+    if (state.activeProject === FAVORITES) {
+      url += "&favorites_only=true";
+    } else if (state.activeProject) {
+      url += "&project=" + encodeURIComponent(state.activeProject);
+    }
+    if (state.filterText) {
+      url += "&q=" + encodeURIComponent(state.filterText);
+    }
 
     var resp = await fetch(url);
     var data = await resp.json();
@@ -227,7 +238,7 @@
       return;
     }
 
-    var filtered = getFilteredMockups();
+    var filtered = state.mockups;
 
     // Always clear and re-render with date separators
     var oldItems = feedContainer.querySelectorAll(".feed-item, .feed-date");
@@ -249,14 +260,6 @@
         feedContainer.appendChild(sep);
       }
       feedContainer.appendChild(createFeedItem(mockup));
-    });
-  }
-
-  function getFilteredMockups() {
-    if (!state.filterText) return state.mockups;
-    var q = state.filterText.toLowerCase();
-    return state.mockups.filter(function (m) {
-      return m.title.toLowerCase().indexOf(q) !== -1;
     });
   }
 
@@ -522,8 +525,8 @@
     clearTimeout(filterTimer);
     filterTimer = setTimeout(function () {
       state.filterText = filterInput.value.trim();
-      renderFeed(true);
-    }, 150);
+      loadMockups(true);
+    }, 200);
   });
 
   /* ── Infinite Scroll ── */
