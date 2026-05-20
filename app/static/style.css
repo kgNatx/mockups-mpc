@@ -4,24 +4,24 @@
    geometric sans, monospace metadata. Cool and controlled.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap');
 
 /* --- Tokens --- */
 :root {
-  --bg-deep:       #09090b;
-  --bg-surface:    #0f0f12;
-  --bg-raised:     #18181b;
-  --bg-hover:      #1f1f23;
-  --bg-active:     #27272a;
+  --bg-deep:       #18181a;
+  --bg-surface:    #1d1d20;
+  --bg-raised:     #242428;
+  --bg-hover:      #2c2c31;
+  --bg-active:     #34343a;
 
-  --border-dim:    #1c1c20;
-  --border-subtle: #27272a;
-  --border-focus:  #3f3f46;
+  --border-dim:    #2a2a2f;
+  --border-subtle: #3a3a40;
+  --border-focus:  #4d4d55;
 
   --text-primary:  #fafafa;
-  --text-secondary:#a1a1aa;
-  --text-tertiary: #71717a;
-  --text-ghost:    #3f3f46;
+  --text-secondary:#a8a8b0;
+  --text-tertiary: #7c7c85;
+  --text-ghost:    #56565e;
 
   --accent:        #22d3ee;
   --accent-dim:    #0891b2;
@@ -33,9 +33,13 @@
   --type-jpg:      #fb7185;
   --type-svg:      #34d399;
 
-  --font-mono:     'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-  --font-heading:  'Space Grotesk', 'Inter', system-ui, sans-serif;
-  --font-sans:     'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-mono:     'Geist Mono', 'JetBrains Mono', 'SF Mono', monospace;
+  --font-heading:  'Geist', 'Inter', system-ui, sans-serif;
+  --font-sans:     'Geist', 'Inter', system-ui, sans-serif;
+
+  --star:          #fbbf24;
+  --star-dim:      #b45309;
+  --star-glow:     rgba(251, 191, 36, 0.12);
 
   --sidebar-w:     320px;
   --meta-h:        48px;
@@ -478,7 +482,7 @@ body {
     linear-gradient(var(--border-dim) 1px, transparent 1px),
     linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
   background-size: 40px 40px;
-  opacity: 0.18;
+  opacity: 0.5;
   pointer-events: none;
   z-index: 0;
 }
