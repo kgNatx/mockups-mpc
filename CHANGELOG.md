@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-05-20
+
+### Fixed
+- Favoriting is now discoverable: the feed star is a proper button in the link/delete action cluster (it previously overlapped the delete button and was painted near-invisible), and the viewer meta-bar shows a clickable hollow-star toggle next to the title.
+
 ## [1.3.0] - 2026-05-20
 
 ### Added
