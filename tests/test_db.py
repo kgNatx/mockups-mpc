@@ -2,7 +2,7 @@ import pytest
 import aiosqlite
 from datetime import datetime, timezone
 from app import config
-from app.db import init_db, insert_mockup, get_mockup, list_mockups, list_projects, update_mockup, delete_mockup
+from app.db import init_db, insert_mockup, get_mockup, list_mockups, list_projects, update_mockup, delete_mockup, set_favorite, count_favorites
 
 @pytest.fixture
 async def db(tmp_data_dir):
@@ -90,6 +90,33 @@ async def test_delete_mockup(db):
 async def test_delete_nonexistent(db):
     deleted = await delete_mockup(db, "nope")
     assert deleted is False
+
+
+@pytest.mark.asyncio
+async def test_set_favorite(db):
+    now = datetime.now(timezone.utc)
+    await insert_mockup(db, id="f1", project="P", project_slug="p",
+                        title="Star me", description=None, content_type="html",
+                        file_path="p/f1.html", tags=[], created_at=now, updated_at=now)
+    assert await set_favorite(db, "f1", True) is True
+    assert (await get_mockup(db, "f1"))["favorite"] == 1
+    assert await set_favorite(db, "f1", False) is True
+    assert (await get_mockup(db, "f1"))["favorite"] == 0
+
+@pytest.mark.asyncio
+async def test_set_favorite_nonexistent(db):
+    assert await set_favorite(db, "nope", True) is False
+
+@pytest.mark.asyncio
+async def test_count_favorites(db):
+    now = datetime.now(timezone.utc)
+    for i in range(3):
+        await insert_mockup(db, id=f"c{i}", project="P", project_slug="p",
+                            title=f"M{i}", description=None, content_type="html",
+                            file_path=f"p/c{i}.html", tags=[], created_at=now, updated_at=now)
+    await set_favorite(db, "c0", True)
+    await set_favorite(db, "c2", True)
+    assert await count_favorites(db) == 2
 
 
 @pytest.mark.asyncio

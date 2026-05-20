@@ -128,6 +128,21 @@ async def update_mockup(db: aiosqlite.Connection, mockup_id: str, *,
     return cursor.rowcount > 0
 
 
+async def set_favorite(db: aiosqlite.Connection, mockup_id: str, value: bool) -> bool:
+    cursor = await db.execute(
+        "UPDATE mockups SET favorite = ?, updated_at = ? WHERE id = ?",
+        (1 if value else 0, datetime.now(timezone.utc).isoformat(), mockup_id)
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def count_favorites(db: aiosqlite.Connection) -> int:
+    cursor = await db.execute("SELECT COUNT(*) AS n FROM mockups WHERE favorite = 1")
+    row = await cursor.fetchone()
+    return row["n"]
+
+
 async def delete_mockup(db: aiosqlite.Connection, mockup_id: str) -> bool:
     cursor = await db.execute("DELETE FROM mockups WHERE id = ?", (mockup_id,))
     await db.commit()
