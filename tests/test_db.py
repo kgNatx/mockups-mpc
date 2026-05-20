@@ -1,5 +1,7 @@
 import pytest
+import aiosqlite
 from datetime import datetime, timezone
+from app import config
 from app.db import init_db, insert_mockup, get_mockup, list_mockups, list_projects, update_mockup, delete_mockup
 
 @pytest.fixture
@@ -88,3 +90,30 @@ async def test_delete_mockup(db):
 async def test_delete_nonexistent(db):
     deleted = await delete_mockup(db, "nope")
     assert deleted is False
+
+
+@pytest.mark.asyncio
+async def test_init_db_adds_favorite_column_to_legacy_db(tmp_data_dir):
+    # Simulate a pre-favorite database: create the old schema by hand.
+    legacy = await aiosqlite.connect(str(config.DB_PATH))
+    await legacy.execute("""
+        CREATE TABLE mockups (
+            id TEXT PRIMARY KEY, project TEXT NOT NULL, project_slug TEXT NOT NULL,
+            title TEXT NOT NULL, description TEXT, content_type TEXT NOT NULL,
+            file_path TEXT NOT NULL, tags TEXT DEFAULT '[]',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )""")
+    await legacy.execute(
+        "INSERT INTO mockups (id, project, project_slug, title, content_type, file_path, created_at, updated_at) "
+        "VALUES ('old1','P','p','Legacy','html','p/old1.html','2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00')")
+    await legacy.commit()
+    await legacy.close()
+
+    # init_db must migrate the existing DB in place.
+    db = await init_db()
+    cursor = await db.execute("PRAGMA table_info(mockups)")
+    cols = {row["name"] for row in await cursor.fetchall()}
+    assert "favorite" in cols
+    row = await get_mockup(db, "old1")
+    assert row["favorite"] == 0
+    await db.close()

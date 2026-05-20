@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS mockups (
     content_type TEXT NOT NULL,
     file_path TEXT NOT NULL,
     tags TEXT DEFAULT '[]',
+    favorite INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -21,12 +22,24 @@ CREATE INDEX IF NOT EXISTS idx_mockups_created_at ON mockups(created_at);
 """
 
 
+async def _migrate_favorite_column(db: aiosqlite.Connection) -> None:
+    """Add the favorite column to databases created before it existed."""
+    cursor = await db.execute("PRAGMA table_info(mockups)")
+    cols = {row["name"] for row in await cursor.fetchall()}
+    if "favorite" not in cols:
+        await db.execute("ALTER TABLE mockups ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+        await db.commit()
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_mockups_favorite ON mockups(favorite)")
+    await db.commit()
+
+
 async def init_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(str(get_db_path()))
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
     await db.executescript(CREATE_TABLE)
     await db.commit()
+    await _migrate_favorite_column(db)
     return db
 
 
