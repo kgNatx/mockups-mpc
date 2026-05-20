@@ -3,6 +3,7 @@ import aiosqlite
 from datetime import datetime, timezone
 from app import config
 from app.db import init_db, insert_mockup, get_mockup, list_mockups, list_projects, update_mockup, delete_mockup, set_favorite, count_favorites
+from app.models import MockupRecord
 
 @pytest.fixture
 async def db(tmp_data_dir):
@@ -213,3 +214,15 @@ async def test_init_db_adds_favorite_column_to_legacy_db(tmp_data_dir):
     row = await get_mockup(db, "old1")
     assert row["favorite"] == 0
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_mockup_record_has_favorite(db):
+    now = datetime.now(timezone.utc)
+    await insert_mockup(db, id="r1", project="P", project_slug="p",
+                        title="R", description=None, content_type="html",
+                        file_path="p/r1.html", tags=[], created_at=now, updated_at=now)
+    await set_favorite(db, "r1", True)
+    row = await get_mockup(db, "r1")
+    record = MockupRecord(**row)
+    assert record.favorite is True

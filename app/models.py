@@ -11,6 +11,7 @@ class MockupRecord(BaseModel):
     content_type: str
     file_path: str
     tags: list[str] = []
+    favorite: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -23,6 +24,7 @@ class MockupSummary(BaseModel):
     description: str | None = None
     content_type: str
     tags: list[str] = []
+    favorite: bool = False
     created_at: datetime
     updated_at: datetime
 
