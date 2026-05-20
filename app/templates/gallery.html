@@ -296,6 +296,17 @@
   function createFeedItem(mockup) {
     var item = el("div", "feed-item" + (mockup.id === state.activeMockupId ? " active" : ""));
     item.setAttribute("data-id", mockup.id);
+    if (mockup.favorite) item.classList.add("has-fav");
+
+    var star = el("button", "feed-star" + (mockup.favorite ? " starred" : ""),
+                  { title: mockup.favorite ? "Unfavorite" : "Favorite", type: "button" });
+    star.appendChild(text(mockup.favorite ? "★" : "☆"));
+    star.addEventListener("click", function (e) {
+      e.stopPropagation();
+      toggleFavorite(mockup, star, item);
+    });
+    item.appendChild(star);
+
     item.addEventListener("click", function () {
       if (state.activeMockupId === mockup.id) deselectMockup();
       else selectMockup(mockup.id);
@@ -407,6 +418,40 @@
   }
 
   /* ── Delete ── */
+  async function toggleFavorite(mockup, starEl, itemEl) {
+    var next = !mockup.favorite;
+    // optimistic UI
+    applyFavoriteUI(mockup, starEl, itemEl, next);
+    try {
+      var resp = await fetch("/api/mockups/" + encodeURIComponent(mockup.id) + "/favorite", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite: next })
+      });
+      if (!resp.ok) throw new Error("request failed");
+      await loadFavoritesCount();
+      renderProjects();
+      // If we're viewing the favorites filter and just unfavorited, drop it from the feed
+      if (state.activeProject === FAVORITES && !next) {
+        state.mockups = state.mockups.filter(function (m) { return m.id !== mockup.id; });
+        renderFeed(true);
+      }
+      // keep meta-bar star in sync if this is the open mockup
+      if (state.activeMockupId === mockup.id) renderMetaBar(mockup);
+    } catch (e) {
+      // rollback
+      applyFavoriteUI(mockup, starEl, itemEl, !next);
+    }
+  }
+
+  function applyFavoriteUI(mockup, starEl, itemEl, value) {
+    mockup.favorite = value;
+    starEl.textContent = value ? "★" : "☆";
+    starEl.title = value ? "Unfavorite" : "Favorite";
+    starEl.classList.toggle("starred", value);
+    if (itemEl) itemEl.classList.toggle("has-fav", value);
+  }
+
   async function deleteMockup(id) {
     var resp = await fetch("/api/mockups/" + encodeURIComponent(id), { method: "DELETE" });
     if (!resp.ok) return;
@@ -428,6 +473,7 @@
 
     renderFeed(true);
     loadProjects();
+    loadFavoritesCount().then(renderProjects);
   }
 
   function createEmptyViewer() {
