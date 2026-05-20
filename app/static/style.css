@@ -340,12 +340,6 @@ body {
   display: flex;
   gap: 2px;
   flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.feed-item:hover .feed-actions {
-  opacity: 1;
 }
 
 .feed-action-btn {
@@ -362,7 +356,13 @@ body {
   line-height: 1;
   padding: 0;
   color: var(--text-ghost);
+  opacity: 0;
   transition: all 0.12s ease;
+}
+
+/* Reveal the action buttons on row hover */
+.feed-item:hover .feed-action-btn {
+  opacity: 1;
 }
 
 .feed-action-btn:hover {
@@ -742,22 +742,14 @@ body {
 /* ============================================================
    FEED STAR BUTTON
    ============================================================ */
-/* Star button on feed items */
-.feed-star {
-  position: absolute; right: 10px; top: 9px; width: 20px; height: 20px;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent; border: none; cursor: pointer; font-size: 13px;
-  line-height: 1; padding: 0; color: var(--text-ghost); z-index: 3;
-  opacity: 0; transition: opacity 0.12s ease, color 0.12s ease, transform 0.12s var(--ease-spring);
-}
-.feed-item:hover .feed-star { opacity: 0.55; }
-.feed-item:hover .feed-star:hover { opacity: 1; color: var(--star); transform: scale(1.15); }
-.feed-star.starred { opacity: 1; color: var(--star); }
-/* When starred, park the star on the left so favorites scan down the left edge */
-.feed-star.starred { right: auto; left: 4px; top: 50%; transform: translateY(-50%); }
-.feed-item:hover .feed-star.starred { opacity: 1; }
-.feed-item .feed-title { transition: padding 0.12s ease; }
-.feed-item.has-fav .feed-title { padding-left: 14px; }
+/* Favorite star — the leftmost button in the feed action cluster.
+   Hidden until row hover like the other actions, but stays visible (amber)
+   when the mockup is favorited so favorites are scannable in any view. */
+.feed-action-btn.feed-star { font-size: 14px; }
+.feed-action-btn.feed-star:hover { color: var(--star); }
+.feed-action-btn.feed-star.starred { opacity: 1; color: var(--star); }
+/* Reserve room on favorited rows so the persistent star never overlaps a long title */
+.feed-item.has-fav .feed-title { padding-right: 24px; }
 
 /* ============================================================
    VIEWER CHROME — VIEWPORT TOGGLES + FULLSCREEN + META STAR
@@ -786,7 +778,14 @@ body {
 .meta-icon-btn:hover { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
 .meta-icon-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.6; }
 
-.meta-bar .meta-star { color: var(--star); font-size: 12px; margin-right: 5px; }
+/* Clickable favorite toggle next to the open mockup's title */
+.meta-bar .meta-star {
+  background: transparent; border: none; cursor: pointer; padding: 2px;
+  font-size: 15px; line-height: 1; margin-right: 4px; color: var(--text-tertiary);
+  transition: color 0.12s ease, transform 0.12s var(--ease-spring);
+}
+.meta-bar .meta-star:hover { color: var(--star); transform: scale(1.15); }
+.meta-bar .meta-star.starred { color: var(--star); }
 
 /* Constrain the iframe width for viewport preview */
 .viewer.vp-mobile .viewer-iframe  { width: 375px; }

@@ -298,15 +298,6 @@
     item.setAttribute("data-id", mockup.id);
     if (mockup.favorite) item.classList.add("has-fav");
 
-    var star = el("button", "feed-star" + (mockup.favorite ? " starred" : ""),
-                  { title: mockup.favorite ? "Unfavorite" : "Favorite", type: "button" });
-    star.appendChild(text(mockup.favorite ? "★" : "☆"));
-    star.addEventListener("click", function (e) {
-      e.stopPropagation();
-      toggleFavorite(mockup, star, item);
-    });
-    item.appendChild(star);
-
     item.addEventListener("click", function () {
       if (state.activeMockupId === mockup.id) deselectMockup();
       else selectMockup(mockup.id);
@@ -331,6 +322,15 @@
     item.appendChild(title);
 
     var actions = el("div", "feed-actions");
+
+    var star = el("button", "feed-action-btn feed-star" + (mockup.favorite ? " starred" : ""),
+                  { title: mockup.favorite ? "Unfavorite" : "Favorite", type: "button" });
+    star.appendChild(text(mockup.favorite ? "★" : "☆"));
+    star.addEventListener("click", function (e) {
+      e.stopPropagation();
+      toggleFavorite(mockup);
+    });
+    actions.appendChild(star);
 
     var copyBtn = el("button", "feed-action-btn feed-action-copy", { title: "Copy link", type: "button" });
     copyBtn.appendChild(text("\u{1F517}"));
@@ -418,10 +418,10 @@
   }
 
   /* ── Delete ── */
-  async function toggleFavorite(mockup, starEl, itemEl) {
+  async function toggleFavorite(mockup) {
     var next = !mockup.favorite;
-    // optimistic UI
-    applyFavoriteUI(mockup, starEl, itemEl, next);
+    mockup.favorite = next;           // optimistic
+    syncFavoriteUI(mockup);
     try {
       var resp = await fetch("/api/mockups/" + encodeURIComponent(mockup.id) + "/favorite", {
         method: "PUT",
@@ -436,21 +436,26 @@
         state.mockups = state.mockups.filter(function (m) { return m.id !== mockup.id; });
         renderFeed(true);
       }
-      // keep meta-bar star in sync if this is the open mockup
-      if (state.activeMockupId === mockup.id) renderMetaBar(mockup);
     } catch (e) {
-      // rollback
-      applyFavoriteUI(mockup, starEl, itemEl, !next);
-      if (state.activeMockupId === mockup.id) renderMetaBar(mockup);
+      mockup.favorite = !next;        // rollback
+      syncFavoriteUI(mockup);
     }
   }
 
-  function applyFavoriteUI(mockup, starEl, itemEl, value) {
-    mockup.favorite = value;
-    starEl.textContent = value ? "★" : "☆";
-    starEl.title = value ? "Unfavorite" : "Favorite";
-    starEl.classList.toggle("starred", value);
-    if (itemEl) itemEl.classList.toggle("has-fav", value);
+  // Reflect mockup.favorite into the feed row (if shown) and the meta bar (if open).
+  // Works no matter which star (feed or meta-bar) triggered the toggle.
+  function syncFavoriteUI(mockup) {
+    feedContainer.querySelectorAll(".feed-item").forEach(function (row) {
+      if (row.getAttribute("data-id") !== mockup.id) return;
+      row.classList.toggle("has-fav", mockup.favorite);
+      var s = row.querySelector(".feed-star");
+      if (s) {
+        s.textContent = mockup.favorite ? "★" : "☆";
+        s.title = mockup.favorite ? "Unfavorite" : "Favorite";
+        s.classList.toggle("starred", mockup.favorite);
+      }
+    });
+    if (state.activeMockupId === mockup.id) renderMetaBar(mockup);
   }
 
   async function deleteMockup(id) {
@@ -526,11 +531,14 @@
     clearChildren(metaBar);
     metaBar.classList.remove("empty");
 
-    if (mockup.favorite) {
-      var metaStar = el("span", "meta-star");
-      metaStar.appendChild(text("★"));
-      metaBar.appendChild(metaStar);
-    }
+    var metaStar = el("button", "meta-star" + (mockup.favorite ? " starred" : ""),
+                      { title: mockup.favorite ? "Unfavorite" : "Favorite", type: "button" });
+    metaStar.appendChild(text(mockup.favorite ? "★" : "☆"));
+    metaStar.addEventListener("click", function (e) {
+      e.stopPropagation();
+      toggleFavorite(mockup);
+    });
+    metaBar.appendChild(metaStar);
 
     var title = el("span", "meta-title");
     title.appendChild(text(mockup.title));
