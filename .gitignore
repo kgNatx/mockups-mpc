@@ -7,3 +7,6 @@ data/
 .env
 .mcp.json
 docs/superpowers/
+.mcpregistry_github_token
+.mcpregistry_registry_token
+.playwright-mcp/
