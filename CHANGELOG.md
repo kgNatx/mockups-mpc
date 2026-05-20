@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-05-20
+
+### Added
+- Favorite (star) mockups; a Favorites filter in the sidebar.
+- Server-side search across title, description, and tags.
+- Sort options: newest, oldest, favorites-first.
+- Viewer chrome: viewport size toggles (375 / 768 / full) and fullscreen for HTML mockups.
+
+### Changed
+- Refreshed visual direction: lifted "Graphite" background, Geist type, cyan accent retained.
+- `favorite` field added to mockup API/MCP output.
+
 ## [1.2.0] - 2026-03-16
 
 ### Added
