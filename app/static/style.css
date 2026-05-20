@@ -786,7 +786,7 @@ body {
 .meta-icon-btn:hover { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
 .meta-icon-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.6; }
 
-.meta-title .meta-star { color: var(--star); font-size: 12px; margin-right: 5px; }
+.meta-bar .meta-star { color: var(--star); font-size: 12px; margin-right: 5px; }
 
 /* Constrain the iframe width for viewport preview */
 .viewer.vp-mobile .viewer-iframe  { width: 375px; }

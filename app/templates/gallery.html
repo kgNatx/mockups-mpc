@@ -441,6 +441,7 @@
     } catch (e) {
       // rollback
       applyFavoriteUI(mockup, starEl, itemEl, !next);
+      if (state.activeMockupId === mockup.id) renderMetaBar(mockup);
     }
   }
 
@@ -682,7 +683,10 @@
 
   async function pollForUpdates() {
     try {
-      var url = "/api/mockups?limit=1&sort=" + encodeURIComponent(state.sort);
+      // Always probe with newest sort so the most-recently-created item is at [0],
+      // regardless of the user's chosen display sort. Keep the active filters so we
+      // only react to changes within the current view.
+      var url = "/api/mockups?limit=1&sort=newest";
       if (state.activeProject === FAVORITES) url += "&favorites_only=true";
       else if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
       if (state.filterText) url += "&q=" + encodeURIComponent(state.filterText);
@@ -690,9 +694,16 @@
       var data = await resp.json();
       if (data.length === 0 && state.mockups.length === 0) return;
 
-      // Check if the newest item changed or count differs
+      // Compare the server's newest item against the newest item we currently hold,
+      // chosen by created_at (NOT state.mockups[0], which depends on the display sort).
       var latestId = data.length > 0 ? data[0].id : null;
-      var currentId = state.mockups.length > 0 ? state.mockups[0].id : null;
+      var newestKnown = null;
+      for (var i = 0; i < state.mockups.length; i++) {
+        if (!newestKnown || state.mockups[i].created_at > newestKnown.created_at) {
+          newestKnown = state.mockups[i];
+        }
+      }
+      var currentId = newestKnown ? newestKnown.id : null;
       if (latestId !== currentId) {
         await loadProjects();
         await loadMockups(true);
