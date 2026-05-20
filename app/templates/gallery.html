@@ -472,8 +472,7 @@
     }
 
     renderFeed(true);
-    loadProjects();
-    loadFavoritesCount().then(renderProjects);
+    Promise.all([loadProjects(), loadFavoritesCount()]).then(renderProjects);
   }
 
   function createEmptyViewer() {
@@ -683,8 +682,10 @@
 
   async function pollForUpdates() {
     try {
-      var url = "/api/mockups?limit=1";
-      if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
+      var url = "/api/mockups?limit=1&sort=" + encodeURIComponent(state.sort);
+      if (state.activeProject === FAVORITES) url += "&favorites_only=true";
+      else if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
+      if (state.filterText) url += "&q=" + encodeURIComponent(state.filterText);
       var resp = await fetch(url);
       var data = await resp.json();
       if (data.length === 0 && state.mockups.length === 0) return;
