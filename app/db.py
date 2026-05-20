@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS mockups (
     content_type TEXT NOT NULL,
     file_path TEXT NOT NULL,
     tags TEXT DEFAULT '[]',
+    favorite INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -21,12 +22,24 @@ CREATE INDEX IF NOT EXISTS idx_mockups_created_at ON mockups(created_at);
 """
 
 
+async def _migrate_favorite_column(db: aiosqlite.Connection) -> None:
+    """Add the favorite column to databases created before it existed."""
+    cursor = await db.execute("PRAGMA table_info(mockups)")
+    cols = {row["name"] for row in await cursor.fetchall()}
+    if "favorite" not in cols:
+        await db.execute("ALTER TABLE mockups ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+        await db.commit()
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_mockups_favorite ON mockups(favorite)")
+    await db.commit()
+
+
 async def init_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(str(get_db_path()))
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
     await db.executescript(CREATE_TABLE)
     await db.commit()
+    await _migrate_favorite_column(db)
     return db
 
 
@@ -52,18 +65,36 @@ async def get_mockup(db: aiosqlite.Connection, mockup_id: str) -> dict | None:
     return _row_to_dict(row)
 
 
+_SORT_ORDERS = {
+    "newest": "created_at DESC",
+    "oldest": "created_at ASC",
+    "favorites": "favorite DESC, created_at DESC",
+}
+
+
 async def list_mockups(db: aiosqlite.Connection, *, project_slug: str | None = None,
+                        q: str | None = None, sort: str = "newest",
+                        favorites_only: bool = False,
                         limit: int = 50, offset: int = 0) -> list[dict]:
+    conditions = []
+    params: list = []
     if project_slug:
-        cursor = await db.execute(
-            "SELECT * FROM mockups WHERE project_slug = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (project_slug, limit, offset)
-        )
-    else:
-        cursor = await db.execute(
-            "SELECT * FROM mockups ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset)
-        )
+        conditions.append("project_slug = ?")
+        params.append(project_slug)
+    if favorites_only:
+        conditions.append("favorite = 1")
+    if q:
+        like = f"%{q}%"
+        conditions.append("(title LIKE ? OR description LIKE ? OR tags LIKE ?)")
+        params.extend([like, like, like])
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    order = _SORT_ORDERS.get(sort, _SORT_ORDERS["newest"])
+    params.extend([limit, offset])
+
+    cursor = await db.execute(
+        f"SELECT * FROM mockups {where} ORDER BY {order} LIMIT ? OFFSET ?", params
+    )
     return [_row_to_dict(row) for row in await cursor.fetchall()]
 
 
@@ -113,6 +144,21 @@ async def update_mockup(db: aiosqlite.Connection, mockup_id: str, *,
     )
     await db.commit()
     return cursor.rowcount > 0
+
+
+async def set_favorite(db: aiosqlite.Connection, mockup_id: str, value: bool) -> bool:
+    cursor = await db.execute(
+        "UPDATE mockups SET favorite = ?, updated_at = ? WHERE id = ?",
+        (1 if value else 0, datetime.now(timezone.utc).isoformat(), mockup_id)
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def count_favorites(db: aiosqlite.Connection) -> int:
+    cursor = await db.execute("SELECT COUNT(*) AS n FROM mockups WHERE favorite = 1")
+    row = await cursor.fetchone()
+    return row["n"]
 
 
 async def delete_mockup(db: aiosqlite.Connection, mockup_id: str) -> bool:
