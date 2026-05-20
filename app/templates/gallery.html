@@ -526,6 +526,12 @@
     clearChildren(metaBar);
     metaBar.classList.remove("empty");
 
+    if (mockup.favorite) {
+      var metaStar = el("span", "meta-star");
+      metaStar.appendChild(text("★"));
+      metaBar.appendChild(metaStar);
+    }
+
     var title = el("span", "meta-title");
     title.appendChild(text(mockup.title));
     metaBar.appendChild(title);
@@ -565,17 +571,44 @@
     spacer.style.flex = "1";
     metaBar.appendChild(spacer);
 
+    if (mockup.content_type === "html") {
+      var vpSeg = el("div", "viewport-seg");
+      [["mobile", "375"], ["tablet", "768"], ["desktop", "Full"]].forEach(function (pair) {
+        var opt = el("div", "vp-opt" + (pair[0] === "desktop" ? " active" : ""), { "data-vp": pair[0] });
+        opt.appendChild(text(pair[1]));
+        opt.addEventListener("click", function () { setViewport(pair[0], vpSeg); });
+        vpSeg.appendChild(opt);
+      });
+      metaBar.appendChild(vpSeg);
+
+      var fsBtn = el("button", "meta-icon-btn", { title: "Fullscreen", type: "button" });
+      fsBtn.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>');
+      fsBtn.addEventListener("click", function () {
+        if (viewer.requestFullscreen) viewer.requestFullscreen();
+      });
+      metaBar.appendChild(fsBtn);
+    }
+
     var popout = el("a", "meta-popout", {
       href: "/view/" + encodeURIComponent(mockup.id),
-      target: "_blank",
-      rel: "noopener"
+      target: "_blank", rel: "noopener"
     });
     popout.appendChild(text("Pop out"));
     metaBar.appendChild(popout);
   }
 
+  function setViewport(size, segEl) {
+    segEl.querySelectorAll(".vp-opt").forEach(function (o) {
+      o.classList.toggle("active", o.getAttribute("data-vp") === size);
+    });
+    viewer.classList.remove("vp-mobile", "vp-tablet");
+    if (size === "mobile") viewer.classList.add("vp-mobile");
+    else if (size === "tablet") viewer.classList.add("vp-tablet");
+  }
+
   function renderViewer(mockup) {
     clearChildren(viewer);
+    viewer.classList.remove("vp-mobile", "vp-tablet");
 
     var viewUrl = "/view/" + encodeURIComponent(mockup.id);
 
