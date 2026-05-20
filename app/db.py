@@ -65,18 +65,36 @@ async def get_mockup(db: aiosqlite.Connection, mockup_id: str) -> dict | None:
     return _row_to_dict(row)
 
 
+_SORT_ORDERS = {
+    "newest": "created_at DESC",
+    "oldest": "created_at ASC",
+    "favorites": "favorite DESC, created_at DESC",
+}
+
+
 async def list_mockups(db: aiosqlite.Connection, *, project_slug: str | None = None,
+                        q: str | None = None, sort: str = "newest",
+                        favorites_only: bool = False,
                         limit: int = 50, offset: int = 0) -> list[dict]:
+    conditions = []
+    params: list = []
     if project_slug:
-        cursor = await db.execute(
-            "SELECT * FROM mockups WHERE project_slug = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (project_slug, limit, offset)
-        )
-    else:
-        cursor = await db.execute(
-            "SELECT * FROM mockups ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset)
-        )
+        conditions.append("project_slug = ?")
+        params.append(project_slug)
+    if favorites_only:
+        conditions.append("favorite = 1")
+    if q:
+        like = f"%{q}%"
+        conditions.append("(title LIKE ? OR description LIKE ? OR tags LIKE ?)")
+        params.extend([like, like, like])
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    order = _SORT_ORDERS.get(sort, _SORT_ORDERS["newest"])
+    params.extend([limit, offset])
+
+    cursor = await db.execute(
+        f"SELECT * FROM mockups {where} ORDER BY {order} LIMIT ? OFFSET ?", params
+    )
     return [_row_to_dict(row) for row in await cursor.fetchall()]
 
 

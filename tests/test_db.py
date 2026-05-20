@@ -119,6 +119,75 @@ async def test_count_favorites(db):
     assert await count_favorites(db) == 2
 
 
+async def _seed_search(db):
+    """Three mockups with distinct titles/descriptions/tags and timestamps."""
+    rows = [
+        ("s0", "Login screen", "auth flow entry", ["auth", "ui"],   datetime(2026, 3, 1, tzinfo=timezone.utc)),
+        ("s1", "Dashboard",    "metrics overview", ["charts"],      datetime(2026, 3, 2, tzinfo=timezone.utc)),
+        ("s2", "Pricing page", "plans and tiers",  ["marketing"],   datetime(2026, 3, 3, tzinfo=timezone.utc)),
+    ]
+    for id_, title, desc, tags, ts in rows:
+        await insert_mockup(db, id=id_, project="P", project_slug="p",
+                            title=title, description=desc, content_type="html",
+                            file_path=f"p/{id_}.html", tags=tags, created_at=ts, updated_at=ts)
+
+@pytest.mark.asyncio
+async def test_list_mockups_search_title(db):
+    await _seed_search(db)
+    rows = await list_mockups(db, q="dashboard")
+    assert [r["id"] for r in rows] == ["s1"]
+
+@pytest.mark.asyncio
+async def test_list_mockups_search_description(db):
+    await _seed_search(db)
+    rows = await list_mockups(db, q="tiers")
+    assert [r["id"] for r in rows] == ["s2"]
+
+@pytest.mark.asyncio
+async def test_list_mockups_search_tags(db):
+    await _seed_search(db)
+    rows = await list_mockups(db, q="auth")
+    assert [r["id"] for r in rows] == ["s0"]
+
+@pytest.mark.asyncio
+async def test_list_mockups_search_no_match(db):
+    await _seed_search(db)
+    assert await list_mockups(db, q="zzzznope") == []
+
+@pytest.mark.asyncio
+async def test_list_mockups_sort_oldest(db):
+    await _seed_search(db)
+    rows = await list_mockups(db, sort="oldest")
+    assert [r["id"] for r in rows] == ["s0", "s1", "s2"]
+
+@pytest.mark.asyncio
+async def test_list_mockups_sort_newest_default(db):
+    await _seed_search(db)
+    rows = await list_mockups(db)
+    assert [r["id"] for r in rows] == ["s2", "s1", "s0"]
+
+@pytest.mark.asyncio
+async def test_list_mockups_sort_favorites_first(db):
+    await _seed_search(db)
+    await set_favorite(db, "s0", True)  # oldest, but favorited
+    rows = await list_mockups(db, sort="favorites")
+    assert rows[0]["id"] == "s0"           # favorite floats to top
+    assert [r["id"] for r in rows[1:]] == ["s2", "s1"]  # rest newest-first
+
+@pytest.mark.asyncio
+async def test_list_mockups_favorites_only(db):
+    await _seed_search(db)
+    await set_favorite(db, "s1", True)
+    rows = await list_mockups(db, favorites_only=True)
+    assert [r["id"] for r in rows] == ["s1"]
+
+@pytest.mark.asyncio
+async def test_list_mockups_invalid_sort_falls_back_to_newest(db):
+    await _seed_search(db)
+    rows = await list_mockups(db, sort="bogus")
+    assert [r["id"] for r in rows] == ["s2", "s1", "s0"]
+
+
 @pytest.mark.asyncio
 async def test_init_db_adds_favorite_column_to_legacy_db(tmp_data_dir):
     # Simulate a pre-favorite database: create the old schema by hand.
