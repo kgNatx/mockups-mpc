@@ -138,3 +138,65 @@ async def test_upload_no_tags(client, tmp_data_dir):
     )
     assert resp.status_code == 200
     assert resp.json()["tags"] == []
+
+
+async def _seed_api(client):
+    """Insert two mockups via a shared db connection; return their ids."""
+    from app.db import init_db, insert_mockup
+    from app.storage import write_mockup_file
+    from datetime import datetime, timezone
+    db = await init_db()
+    t0 = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    t1 = datetime(2026, 3, 2, tzinfo=timezone.utc)
+    write_mockup_file("p", "api0", "html", "<p>0</p>")
+    write_mockup_file("p", "api1", "html", "<p>1</p>")
+    await insert_mockup(db, id="api0", project="P", project_slug="p",
+                        title="Login screen", description="auth", content_type="html",
+                        file_path="p/api0.html", tags=["auth"], created_at=t0, updated_at=t0)
+    await insert_mockup(db, id="api1", project="P", project_slug="p",
+                        title="Dashboard", description="metrics", content_type="html",
+                        file_path="p/api1.html", tags=["charts"], created_at=t1, updated_at=t1)
+
+@pytest.mark.asyncio
+async def test_api_search(client):
+    await _seed_api(client)
+    resp = await client.get("/api/mockups?q=dashboard")
+    data = resp.json()
+    assert [m["id"] for m in data] == ["api1"]
+
+@pytest.mark.asyncio
+async def test_api_sort_oldest(client):
+    await _seed_api(client)
+    resp = await client.get("/api/mockups?sort=oldest")
+    assert [m["id"] for m in resp.json()] == ["api0", "api1"]
+
+@pytest.mark.asyncio
+async def test_api_set_favorite(client):
+    await _seed_api(client)
+    resp = await client.put("/api/mockups/api0/favorite", json={"favorite": True})
+    assert resp.status_code == 200
+    assert resp.json()["favorite"] == 1
+    # favorites_only now returns it
+    resp = await client.get("/api/mockups?favorites_only=true")
+    assert [m["id"] for m in resp.json()] == ["api0"]
+
+@pytest.mark.asyncio
+async def test_api_set_favorite_idempotent(client):
+    await _seed_api(client)
+    await client.put("/api/mockups/api0/favorite", json={"favorite": True})
+    resp = await client.put("/api/mockups/api0/favorite", json={"favorite": True})
+    assert resp.status_code == 200
+    assert resp.json()["favorite"] == 1
+
+@pytest.mark.asyncio
+async def test_api_set_favorite_not_found(client):
+    resp = await client.put("/api/mockups/nope/favorite", json={"favorite": True})
+    assert resp.status_code == 404
+
+@pytest.mark.asyncio
+async def test_api_favorites_count(client):
+    await _seed_api(client)
+    await client.put("/api/mockups/api0/favorite", json={"favorite": True})
+    resp = await client.get("/api/favorites/count")
+    assert resp.status_code == 200
+    assert resp.json() == {"count": 1}

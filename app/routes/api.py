@@ -2,7 +2,8 @@ import base64
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
-from app.db import get_mockup, list_mockups, list_projects
+from pydantic import BaseModel
+from app.db import get_mockup, list_mockups, list_projects, set_favorite, count_favorites
 from app.storage import BINARY_TYPES, TEXT_TYPES, VALID_TYPES, MAX_CONTENT_SIZE
 
 router = APIRouter(prefix="/api")
@@ -18,11 +19,14 @@ EXT_TO_TYPE = {
 
 @router.get("/mockups")
 async def api_list_mockups(request: Request, project: str | None = None,
+                           q: str | None = None, sort: str = "newest",
+                           favorites_only: bool = False,
                            limit: int = 50, offset: int = 0):
     # project param accepts either slug or display name
     from app.storage import slugify_project
     slug = slugify_project(project) if project else None
-    rows = await list_mockups(request.app.state.db, project_slug=slug,
+    rows = await list_mockups(request.app.state.db, project_slug=slug, q=q,
+                              sort=sort, favorites_only=favorites_only,
                               limit=limit, offset=offset)
     return rows
 
@@ -32,6 +36,24 @@ async def api_get_mockup(request: Request, mockup_id: str):
     if row is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
     return row
+
+class FavoriteBody(BaseModel):
+    favorite: bool
+
+
+@router.put("/mockups/{mockup_id}/favorite")
+async def api_set_favorite(request: Request, mockup_id: str, body: FavoriteBody):
+    ok = await set_favorite(request.app.state.db, mockup_id, body.favorite)
+    if not ok:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    row = await get_mockup(request.app.state.db, mockup_id)
+    return row
+
+
+@router.get("/favorites/count")
+async def api_favorites_count(request: Request):
+    return {"count": await count_favorites(request.app.state.db)}
+
 
 @router.delete("/mockups/{mockup_id}")
 async def api_delete_mockup(request: Request, mockup_id: str):
