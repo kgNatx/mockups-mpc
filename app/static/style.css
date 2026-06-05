@@ -245,7 +245,7 @@ body {
 /* -- Feed -- */
 .sidebar-feed {
   flex: 1;
-  min-height: 140px;  /* never let a long projects list starve the feed */
+  min-height: 50vh;   /* feed keeps at least the bottom half; projects/feed split sits at most at the viewport midline */
   overflow-y: auto;
   padding: 4px 12px 20px;
 }
