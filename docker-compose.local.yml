@@ -1,3 +1,9 @@
+# LOCAL DEV ONLY — do NOT use on the server.
+# This file publishes host port 8000, which collides with the Ghost container
+# (ghost-ghost-1 owns 0.0.0.0:8000) and the container will fail to start with
+# "Bind for 0.0.0.0:8000 failed: port is already allocated".
+# On the server use the production compose instead:
+#   docker compose -f docker-compose.yml up -d --build
 services:
   mockups-mpc:
     image: ghcr.io/kgnatx/mockups-mpc:latest
