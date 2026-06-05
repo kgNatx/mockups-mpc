@@ -11,6 +11,19 @@ async def test_gallery_loads(client):
 
 
 @pytest.mark.asyncio
+async def test_gallery_stylesheet_is_cache_busted(client):
+    # The stylesheet href must carry a ?v=<version> query so each release busts
+    # the browser cache; no unversioned reference should remain.
+    from pathlib import Path
+
+    version = (Path(__file__).parent.parent / "VERSION").read_text().strip()
+    resp = await client.get("/")
+    assert resp.status_code == 200
+    assert f"/static/style.css?v={version}" in resp.text
+    assert '/static/style.css"' not in resp.text
+
+
+@pytest.mark.asyncio
 async def test_view_html_mockup(client):
     from app.db import init_db, insert_mockup
     from app.storage import write_mockup_file
