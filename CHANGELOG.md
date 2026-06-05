@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-06-05
+
+### Security
+- Stored html/svg served at `/view/{id}` is now sandboxed with `Content-Security-Policy: sandbox allow-scripts` and `X-Content-Type-Options: nosniff`. Popped-out mockups still run their own scripts, but in an opaque origin, so they can no longer reach the same-origin API (closes a stored-XSS path).
+
+### Fixed
+- `update_mockup` no longer wipes a mockup's description on a metadata-only update (e.g. a title change).
+- Upload and list endpoints return HTTP 400 instead of 500 for invalid project names; uploads are read in bounded chunks so an oversized body can't exhaust memory.
+- A failed feed load no longer permanently freezes the gallery feed — it surfaces a retry message and recovers on the next poll.
+- Auto-refresh now detects deletions, edits, and favorite toggles made by other clients, not only new uploads.
+- A written file is rolled back if its database insert fails (no orphaned files).
+- Deleting a mockup surfaces feedback when the server rejects it instead of silently doing nothing.
+- The sidebar no longer overflows on very short viewports.
+
+### Added
+- Keyboard accessibility: feed rows, the project list, and the sort/viewport controls are focusable and operable with Enter/Space, with visible focus rings; row action buttons reveal on keyboard focus and on touch devices.
+
+### Changed
+- Internal hardening: `busy_timeout` PRAGMA on the SQLite connection, consolidated content-type validation, and removed dead code. Test suite expanded to 83 tests.
+
 ## [1.3.1] - 2026-05-20
 
 ### Fixed
