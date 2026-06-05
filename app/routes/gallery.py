@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_mockup
-from app.config import get_data_dir
+from app.config import get_data_dir, APP_VERSION
 
 router = APIRouter()
 
@@ -22,7 +22,7 @@ MIME_MAP = {
 
 @router.get("/", response_class=HTMLResponse)
 async def gallery(request: Request):
-    return templates.TemplateResponse(request, "gallery.html")
+    return templates.TemplateResponse(request, "gallery.html", {"version": APP_VERSION})
 
 
 @router.get("/view/{mockup_id}")
