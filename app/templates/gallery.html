@@ -113,6 +113,19 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
+  // Make a non-semantic clickable element keyboard-operable: focusable, exposed
+  // as a button to assistive tech, and activated by Enter/Space like a click.
+  function makeActivatable(node, handler) {
+    node.setAttribute("role", "button");
+    node.setAttribute("tabindex", "0");
+    node.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handler(e);
+      }
+    });
+  }
+
   function formatTime(iso) {
     var d = new Date(iso);
     var now = new Date();
@@ -165,7 +178,9 @@
 
     // Favorites pseudo-item
     var favItem = el("li", "project-item favorites" + (state.activeProject === FAVORITES ? " active" : ""));
-    favItem.addEventListener("click", function () { selectProject(FAVORITES); });
+    var favActivate = function () { selectProject(FAVORITES); };
+    favItem.addEventListener("click", favActivate);
+    makeActivatable(favItem, favActivate);
     var favName = el("span", "project-name");
     var favStar = el("span", "fav-star");
     favStar.appendChild(text("★"));
@@ -179,7 +194,9 @@
 
     // "All" item
     var allItem = el("li", "project-item" + (state.activeProject === null ? " active" : ""));
-    allItem.addEventListener("click", function () { selectProject(null); });
+    var allActivate = function () { selectProject(null); };
+    allItem.addEventListener("click", allActivate);
+    makeActivatable(allItem, allActivate);
     var allName = el("span", "project-name");
     allName.appendChild(text("All"));
     var allCount = el("span", "project-count");
@@ -193,7 +210,9 @@
 
     state.projects.forEach(function (proj) {
       var item = el("li", "project-item" + (state.activeProject === proj.project_slug ? " active" : ""));
-      item.addEventListener("click", function () { selectProject(proj.project_slug); });
+      var activate = function () { selectProject(proj.project_slug); };
+      item.addEventListener("click", activate);
+      makeActivatable(item, activate);
       var name = el("span", "project-name");
       name.appendChild(text(proj.project));
       var count = el("span", "project-count");
@@ -242,8 +261,23 @@
       url += "&q=" + encodeURIComponent(state.filterText);
     }
 
-    var resp = await fetch(url);
-    var data = await resp.json();
+    var data;
+    try {
+      var resp = await fetch(url);
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      data = await resp.json();
+    } catch (e) {
+      // Surface the failure instead of silently freezing the feed forever.
+      // The auto-refresh poll will retry and recover on the next tick.
+      if (reset) {
+        feedStatusEl.textContent = "Couldn't load — retrying…";
+        feedStatusEl.style.display = "";
+      }
+      return;
+    } finally {
+      // Always release the loading lock, or every later load() would no-op.
+      state.loading = false;
+    }
 
     if (data.length < state.limit) state.exhausted = true;
     state.offset += data.length;
@@ -251,7 +285,6 @@
     if (reset) state.mockups = data;
     else state.mockups = state.mockups.concat(data);
 
-    state.loading = false;
     renderFeed(reset);
   }
 
@@ -298,10 +331,12 @@
     item.setAttribute("data-id", mockup.id);
     if (mockup.favorite) item.classList.add("has-fav");
 
-    item.addEventListener("click", function () {
+    var activate = function () {
       if (state.activeMockupId === mockup.id) deselectMockup();
       else selectMockup(mockup.id);
-    });
+    };
+    item.addEventListener("click", activate);
+    makeActivatable(item, activate);
 
     var title = el("div", "feed-title");
     var titleText = el("span", "feed-title-text");
@@ -352,7 +387,11 @@
     delBtn.appendChild(text("\u2715"));
     delBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      deleteMockup(mockup.id);
+      deleteMockup(mockup.id).catch(function () {
+        // Flash the button so a failed delete isn't a silent no-op.
+        delBtn.classList.add("failed");
+        setTimeout(function () { delBtn.classList.remove("failed"); }, 1500);
+      });
     });
     actions.appendChild(delBtn);
 
@@ -460,7 +499,7 @@
 
   async function deleteMockup(id) {
     var resp = await fetch("/api/mockups/" + encodeURIComponent(id), { method: "DELETE" });
-    if (!resp.ok) return;
+    if (!resp.ok) throw new Error("delete failed: HTTP " + resp.status);
 
     // Remove from state
     state.mockups = state.mockups.filter(function (m) { return m.id !== id; });
@@ -520,11 +559,17 @@
   }
 
   async function fetchAndDisplay(id) {
-    var resp = await fetch("/api/mockups/" + encodeURIComponent(id));
-    if (!resp.ok) return;
-    var mockup = await resp.json();
-    renderViewer(mockup);
-    renderMetaBar(mockup);
+    var resp;
+    try {
+      resp = await fetch("/api/mockups/" + encodeURIComponent(id));
+      if (!resp.ok) return;
+      var mockup = await resp.json();
+      // The selection may have changed while this request was in flight; don't
+      // clobber the viewer with a now-stale response.
+      if (state.activeMockupId !== id) return;
+      renderViewer(mockup);
+      renderMetaBar(mockup);
+    } catch (e) { /* network error — leave the current view in place */ }
   }
 
   function renderMetaBar(mockup) {
@@ -584,7 +629,9 @@
       [["mobile", "375"], ["tablet", "768"], ["desktop", "Full"]].forEach(function (pair) {
         var opt = el("div", "vp-opt" + (pair[0] === "desktop" ? " active" : ""), { "data-vp": pair[0] });
         opt.appendChild(text(pair[1]));
-        opt.addEventListener("click", function () { setViewport(pair[0], vpSeg); });
+        var activate = function () { setViewport(pair[0], vpSeg); };
+        opt.addEventListener("click", activate);
+        makeActivatable(opt, activate);
         vpSeg.appendChild(opt);
       });
       metaBar.appendChild(vpSeg);
@@ -648,13 +695,26 @@
 
   /* ── Sort Control ── */
   var sortSeg = document.getElementById("sort-seg");
-  sortSeg.addEventListener("click", function (e) {
-    var opt = e.target.closest(".sort-opt");
+  function applySort(opt) {
     if (!opt) return;
     sortSeg.querySelectorAll(".sort-opt").forEach(function (o) { o.classList.remove("active"); });
     opt.classList.add("active");
     state.sort = opt.getAttribute("data-sort");
     loadMockups(true);
+  }
+  sortSeg.querySelectorAll(".sort-opt").forEach(function (o) {
+    o.setAttribute("role", "button");
+    o.setAttribute("tabindex", "0");
+  });
+  sortSeg.addEventListener("click", function (e) {
+    applySort(e.target.closest(".sort-opt"));
+  });
+  sortSeg.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    var opt = e.target.closest(".sort-opt");
+    if (!opt) return;
+    e.preventDefault();
+    applySort(opt);
   });
 
   /* ── Infinite Scroll ── */
@@ -674,45 +734,50 @@
 
   /* ── Setup Guide Link ── */
   function updateGuideLink() {
-    var guide = state.mockups.find(function (m) { return m.title === "Setup Guide"; });
     var link = document.getElementById("guide-link");
-    if (guide && link) {
-      link.href = "#";
-      link.style.display = "";
-      link.addEventListener("click", function (e) {
-        e.preventDefault();
-        selectMockup(guide.id);
-      });
-    }
+    if (!link) return;
+    var guide = state.mockups.find(function (m) { return m.title === "Setup Guide"; });
+    if (!guide) return;
+    link.href = "#";
+    link.style.display = "";
+    // Assign (not addEventListener) so repeated calls from the poll don't stack
+    // duplicate handlers on this persistent element. Resolve the id at click
+    // time so it stays current across refreshes.
+    link.onclick = function (e) {
+      e.preventDefault();
+      var g = state.mockups.find(function (m) { return m.title === "Setup Guide"; });
+      if (g) selectMockup(g.id);
+    };
   }
 
   /* ── Auto-refresh ── */
   var POLL_INTERVAL = 5000;
+  var lastPollSig = null;
 
   async function pollForUpdates() {
     try {
-      // Always probe with newest sort so the most-recently-created item is at [0],
-      // regardless of the user's chosen display sort. Keep the active filters so we
-      // only react to changes within the current view.
-      var url = "/api/mockups?limit=1&sort=newest";
+      // Probe the current view and build a signature over id + updated_at +
+      // favorite. Comparing the whole signature (not just the newest-inserted
+      // id) means we also catch deletions, metadata/content edits, and favorite
+      // toggles made by other clients/agents — not only new inserts. Capped at
+      // 200 rows; a change to an item below that in a very long scrolled feed
+      // won't trigger until the next reset.
+      var probeLimit = Math.min(Math.max(state.mockups.length, 1), 200);
+      var url = "/api/mockups?limit=" + probeLimit + "&sort=newest";
       if (state.activeProject === FAVORITES) url += "&favorites_only=true";
       else if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
       if (state.filterText) url += "&q=" + encodeURIComponent(state.filterText);
       var resp = await fetch(url);
+      if (!resp.ok) return;
       var data = await resp.json();
-      if (data.length === 0 && state.mockups.length === 0) return;
 
-      // Compare the server's newest item against the newest item we currently hold,
-      // chosen by created_at (NOT state.mockups[0], which depends on the display sort).
-      var latestId = data.length > 0 ? data[0].id : null;
-      var newestKnown = null;
-      for (var i = 0; i < state.mockups.length; i++) {
-        if (!newestKnown || state.mockups[i].created_at > newestKnown.created_at) {
-          newestKnown = state.mockups[i];
-        }
-      }
-      var currentId = newestKnown ? newestKnown.id : null;
-      if (latestId !== currentId) {
+      var sig = data.map(function (m) {
+        return m.id + ":" + m.updated_at + ":" + (m.favorite ? 1 : 0);
+      }).join("|");
+
+      if (lastPollSig === null) { lastPollSig = sig; return; }
+      if (sig !== lastPollSig) {
+        lastPollSig = sig;
         await loadProjects();
         await loadMockups(true);
         updateGuideLink();
