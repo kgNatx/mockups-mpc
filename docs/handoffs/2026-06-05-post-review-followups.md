@@ -12,31 +12,25 @@ touching anything — they will save you a deploy mistake.
 
 ## State of the world
 
-- `main` is at v1.4.0, pushed to GitHub, CI green. GHCR has `1.4.0` + `latest`
-  (built locally, see workflow notes — **do not** push a `v*` git tag).
-- Running prod container = the v1.4.0 code (prod compose uses `build: .`).
-- 83 tests pass: `.venv/bin/python -m pytest -q`.
+- **UPDATED 2026-06-05 (session 2):** `main` is at **v1.4.1**, pushed, GHCR has
+  `1.4.1` + `latest` (local build, no `v*` tag). Running prod container = v1.4.1.
+  **84 tests pass.** Follow-up 1 (cache-bust) shipped; Follow-up 3 (thumbnails)
+  shelved. Only Follow-up 2 (auth) remains. See the session-2 handoff:
+  `docs/handoffs/2026-06-05-session2-deploy-and-release.md`.
 - The review's full findings were in a `/tmp` workflow output (ephemeral, likely
   gone now). The actionable remainder is captured below — you don't need it.
 
 ---
 
-## Follow-up 1 — Stylesheet cache-bust (smallest, do first)
+## Follow-up 1 — Stylesheet cache-bust — DONE (shipped in v1.4.1, 2026-06-05)
 
-**Problem:** `app/templates/gallery.html` line ~7 loads `<link rel="stylesheet"
-href="/static/style.css">` with no version query. After every deploy Kyle has to
-hard-refresh (Ctrl/Cmd-Shift-R) to get new CSS; normal reload serves the cached
-copy.
-
-**Fix:** append `?v=<VERSION>` to the href so each release busts the cache.
-- `app/routes/gallery.py` `gallery()` already returns a `TemplateResponse`. Read
-  the `VERSION` file (or import a version constant) and pass it into the template
-  context, then in `gallery.html`: `href="/static/style.css?v={{ version }}"`.
-- Consider doing the same for any other static asset linked in the template.
-
-**Test:** assert `GET /` HTML contains `style.css?v=` (e.g. in `tests/test_gallery.py`).
-
-**Effort:** ~15 min. Good warm-up task.
+Implemented as specified: `gallery.html` href is now
+`/static/style.css?v={{ version }}`, version sourced from `config.APP_VERSION`
+(reads the root `VERSION` file, `"dev"` fallback). **Gotcha caught:** the `VERSION`
+file was NOT in the image — the Dockerfile only did `COPY app/ app/` — so a naive
+"read the VERSION file" would have silently fallen back to `"dev"` in prod. Fixed
+by adding `COPY VERSION .` to the Dockerfile. Test:
+`tests/test_gallery.py::test_gallery_stylesheet_is_cache_busted`.
 
 ---
 
@@ -170,8 +164,9 @@ on purpose. Only revisit if Kyle reports visible title-scroll glitches.
 
 ## Suggested order
 
-1. Cache-bust (15 min, ships confidence).
+1. ~~Cache-bust~~ — **DONE, shipped in v1.4.1** (see Follow-up 1).
 2. Auth lockdown — **ask Kyle the two scope questions first**, then implement.
+   This is now the ONLY open follow-up.
 3. ~~Thumbnails~~ — **SHELVED 2026-06-05** (see Follow-up 3). Gallery is 86% HTML,
    so the cheap path covers only 14%; the real win needs rendered HTML thumbnails,
    which isn't worth it right now. Don't pick this up unless Kyle reopens it.
