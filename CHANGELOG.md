@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.4.1] - 2026-06-05
+
+### Fixed
+- The gallery stylesheet is now cache-busted with a `?v=<VERSION>` query, so each release picks up new CSS without a manual hard-refresh. The version is read from the `VERSION` file (now copied into the image) and falls back to `dev` if absent.
+
 ## [1.4.0] - 2026-06-05
 
 ### Security
