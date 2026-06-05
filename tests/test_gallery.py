@@ -53,3 +53,33 @@ async def test_view_image_mockup(client):
 async def test_view_not_found(client):
     resp = await client.get("/view/nonexistent")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_view_html_is_sandboxed(client):
+    # Stored html served top-level must carry the sandbox CSP + nosniff so a
+    # popped-out mockup's scripts can't reach our same-origin API.
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("xss.html", b"<script>alert(1)</script>", "text/html")},
+        data={"project": "Sec", "title": "XSS"},
+    )
+    vid = resp.json()["id"]
+    resp = await client.get(f"/view/{vid}")
+    assert resp.status_code == 200
+    assert "sandbox" in resp.headers["content-security-policy"]
+    assert resp.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.asyncio
+async def test_view_image_has_no_sandbox_csp(client):
+    # Images carry no executable content; they should not get the sandbox CSP.
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("i.png", b"\x89PNG\r\n\x1a\nx", "image/png")},
+        data={"project": "P", "title": "Img"},
+    )
+    vid = resp.json()["id"]
+    resp = await client.get(f"/view/{vid}")
+    assert resp.status_code == 200
+    assert "content-security-policy" not in resp.headers

@@ -10,9 +10,10 @@ from pydantic import Field
 from app import config
 from app.db import (
     insert_mockup, get_mockup, list_mockups, list_projects,
-    update_mockup as db_update_mockup, delete_mockup as db_delete_mockup
+    update_mockup as db_update_mockup, delete_mockup as db_delete_mockup,
+    UNSET,
 )
-from app.storage import slugify_project, write_mockup_file, delete_mockup_file, VALID_TYPES
+from app.storage import slugify_project, write_mockup_file, delete_mockup_file
 
 mcp = FastMCP(
     name="Mockups Gallery",
@@ -34,17 +35,22 @@ mcp = FastMCP(
 async def _send_mockup(*, db: aiosqlite.Connection, project: str, title: str,
                         description: str | None, content: str, content_type: str,
                         tags: list[str] | None) -> dict:
-    if content_type not in VALID_TYPES:
-        raise ValueError(f"Invalid content_type: {content_type!r}. Must be one of: {VALID_TYPES}")
     slug = slugify_project(project)
     mockup_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
+    # write_mockup_file is the authoritative content_type gate (it maps the type
+    # to the on-disk extension), so we don't pre-validate here.
     file_path = write_mockup_file(slug, mockup_id, content_type, content)
-    await insert_mockup(
-        db, id=mockup_id, project=project, project_slug=slug, title=title,
-        description=description, content_type=content_type, file_path=file_path,
-        tags=tags or [], created_at=now, updated_at=now
-    )
+    try:
+        await insert_mockup(
+            db, id=mockup_id, project=project, project_slug=slug, title=title,
+            description=description, content_type=content_type, file_path=file_path,
+            tags=tags or [], created_at=now, updated_at=now
+        )
+    except Exception:
+        # Roll back the file write so a failed insert doesn't orphan it on disk.
+        delete_mockup_file(file_path)
+        raise
     return {
         "id": mockup_id, "project": project, "project_slug": slug,
         "title": title, "description": description, "content_type": content_type,
@@ -70,12 +76,17 @@ async def _get_mockup(*, db: aiosqlite.Connection, id: str) -> dict:
 
 
 async def _update_mockup(*, db: aiosqlite.Connection, id: str,
-                          title: str | None, description: str | None,
-                          tags: list[str] | None, content: str | None,
-                          content_type: str | None) -> dict:
+                          title: str | None = None, description=UNSET,
+                          tags: list[str] | None = None, content: str | None = None,
+                          content_type: str | None = None) -> dict:
     existing = await get_mockup(db, id)
     if existing is None:
         raise ValueError(f"Mockup not found: {id}")
+    if content_type is not None and content is None:
+        raise ValueError(
+            "content_type can only be changed by also supplying new content, "
+            "since it determines the on-disk file extension"
+        )
     new_file_path = None
     if content is not None:
         ct = content_type or existing["content_type"]
@@ -180,7 +191,8 @@ def register_tools(get_db):
     ) -> dict:
         try:
             return await _update_mockup(
-                db=get_db(), id=id, title=title, description=description,
+                db=get_db(), id=id, title=title,
+                description=UNSET if description is None else description,
                 tags=tags, content=content, content_type=content_type
             )
         except ValueError as e:

@@ -34,4 +34,13 @@ async def view_mockup(request: Request, mockup_id: str):
     if not file_path.exists():
         return JSONResponse({"error": "File not found"}, status_code=404)
     mime = MIME_MAP.get(row["content_type"], "application/octet-stream")
-    return FileResponse(str(file_path), media_type=mime)
+    headers = {"X-Content-Type-Options": "nosniff"}
+    # Stored html/svg is user-supplied and is served at the top level here (the
+    # "Pop out" link and the MCP view_url navigate directly to it, bypassing the
+    # in-feed iframe sandbox). The CSP `sandbox` directive sandboxes even a
+    # top-level document into an opaque origin, so embedded scripts still run
+    # (mockups stay interactive) but cannot reach our same-origin API, cookies,
+    # or storage. `allow-scripts` mirrors the in-feed iframe's sandbox.
+    if row["content_type"] in ("html", "svg"):
+        headers["Content-Security-Policy"] = "sandbox allow-scripts"
+    return FileResponse(str(file_path), media_type=mime, headers=headers)
