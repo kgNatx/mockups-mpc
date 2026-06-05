@@ -1,10 +1,12 @@
 import base64
+from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from app.db import get_mockup, list_mockups, list_projects, set_favorite, count_favorites
-from app.storage import BINARY_TYPES, TEXT_TYPES, VALID_TYPES, MAX_CONTENT_SIZE
+from app.storage import TEXT_TYPES, MAX_CONTENT_SIZE, slugify_project
+from app.mcp_server import _send_mockup, _delete_mockup
 
 router = APIRouter(prefix="/api")
 
@@ -23,8 +25,10 @@ async def api_list_mockups(request: Request, project: str | None = None,
                            favorites_only: bool = False,
                            limit: int = 50, offset: int = 0):
     # project param accepts either slug or display name
-    from app.storage import slugify_project
-    slug = slugify_project(project) if project else None
+    try:
+        slug = slugify_project(project) if project else None
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     rows = await list_mockups(request.app.state.db, project_slug=slug, q=q,
                               sort=sort, favorites_only=favorites_only,
                               limit=limit, offset=offset)
@@ -57,7 +61,6 @@ async def api_favorites_count(request: Request):
 
 @router.delete("/mockups/{mockup_id}")
 async def api_delete_mockup(request: Request, mockup_id: str):
-    from app.mcp_server import _delete_mockup
     try:
         return await _delete_mockup(db=request.app.state.db, id=mockup_id)
     except ValueError:
@@ -78,9 +81,6 @@ async def api_upload(
 ):
     """Upload a mockup file directly. More token-efficient than send_mockup
     since file content doesn't flow through the model context."""
-    from pathlib import PurePosixPath
-    from app.mcp_server import _send_mockup
-
     # Determine content type from file extension
     ext = PurePosixPath(file.filename or "").suffix.lower()
     content_type = EXT_TO_TYPE.get(ext)
@@ -90,13 +90,20 @@ async def api_upload(
             status_code=400,
         )
 
-    # Read file data with size check
-    data = await file.read()
-    if len(data) > MAX_CONTENT_SIZE:
-        return JSONResponse(
-            {"error": f"File too large: {len(data)} bytes (max {MAX_CONTENT_SIZE})"},
-            status_code=413,
-        )
+    # Read in bounded chunks so an oversize upload can't exhaust memory before
+    # the size check (file.read() with no arg would buffer the whole body).
+    data = bytearray()
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        data.extend(chunk)
+        if len(data) > MAX_CONTENT_SIZE:
+            return JSONResponse(
+                {"error": f"File too large (max {MAX_CONTENT_SIZE} bytes)"},
+                status_code=413,
+            )
+    data = bytes(data)
 
     # Encode content the way _send_mockup expects it
     if content_type in TEXT_TYPES:
@@ -110,13 +117,16 @@ async def api_upload(
     # Parse tags: comma-separated string → list
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
-    result = await _send_mockup(
-        db=request.app.state.db,
-        project=project,
-        title=title,
-        description=description,
-        content=content,
-        content_type=content_type,
-        tags=tag_list,
-    )
+    try:
+        result = await _send_mockup(
+            db=request.app.state.db,
+            project=project,
+            title=title,
+            description=description,
+            content=content,
+            content_type=content_type,
+            tags=tag_list,
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     return result

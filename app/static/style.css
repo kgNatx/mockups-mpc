@@ -362,9 +362,32 @@ body {
   transition: all 0.12s ease;
 }
 
-/* Reveal the action buttons on row hover */
-.feed-item:hover .feed-action-btn {
+/* Reveal the action buttons on row hover, on keyboard focus within the row,
+   and on touch devices (which have no hover) so they're never unreachable. */
+.feed-item:hover .feed-action-btn,
+.feed-item:focus-within .feed-action-btn,
+.feed-action-btn:focus-visible {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .feed-action-btn { opacity: 0.6; }
+}
+
+/* Visible focus ring for keyboard users on the otherwise non-semantic,
+   click-built interactive elements. */
+.feed-item:focus-visible,
+.project-item:focus-visible,
+.feed-action-btn:focus-visible,
+.vp-opt:focus-visible,
+.sort-opt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Flash a failed action (e.g. a delete that the server rejected). */
+.feed-action-btn.failed {
+  color: var(--type-jpg);
 }
 
 .feed-action-btn:hover {
@@ -702,6 +725,12 @@ body {
 /* -- Responsive (collapse sidebar at narrow widths) -- */
 @media (max-width: 720px) {
   :root { --sidebar-w: 260px; }
+}
+
+/* On very short viewports the 50vh feed floor + fixed brand/filter can exceed
+   100vh and clip the column; drop the floor so the feed yields and scrolls. */
+@media (max-height: 600px) {
+  .sidebar-feed { min-height: 0; }
 }
 
 /* ============================================================

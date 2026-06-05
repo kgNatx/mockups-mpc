@@ -147,3 +147,77 @@ async def test_set_created_at_invalid(db):
     )
     with pytest.raises(ValueError, match="Invalid ISO"):
         await _set_created_at(db=db, id=sent["id"], created_at="not-a-date")
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_metadata_preserves_description(db):
+    # Regression: a metadata-only update that omits description must NOT null it.
+    sent = await _send_mockup(
+        db=db, project="P", title="Old",
+        description="keep me", content="<p>v1</p>",
+        content_type="html", tags=[]
+    )
+    result = await _update_mockup(db=db, id=sent["id"], title="New", tags=["v2"])
+    assert result["title"] == "New"
+    assert result["description"] == "keep me"
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_content_type_change_deletes_old_file(db, tmp_data_dir):
+    import base64
+    sent = await _send_mockup(
+        db=db, project="P", title="T",
+        description=None, content="<p>v1</p>",
+        content_type="html", tags=[]
+    )
+    old_path = tmp_data_dir / sent["file_path"]
+    assert old_path.exists() and old_path.suffix == ".html"
+
+    png = base64.b64encode(b"\x89PNG fake").decode()
+    result = await _update_mockup(
+        db=db, id=sent["id"], content=png, content_type="png"
+    )
+    assert result["content_type"] == "png"
+    assert result["file_path"].endswith(".png")
+    assert (tmp_data_dir / result["file_path"]).exists()
+    assert not old_path.exists()  # old .html removed
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_content_type_without_content_raises(db):
+    sent = await _send_mockup(
+        db=db, project="P", title="T",
+        description=None, content="<p>x</p>",
+        content_type="html", tags=[]
+    )
+    with pytest.raises(ValueError, match="content_type can only be changed"):
+        await _update_mockup(db=db, id=sent["id"], content_type="png")
+
+
+@pytest.mark.asyncio
+async def test_set_created_at_reorders_listing(db):
+    a = await _send_mockup(db=db, project="P", title="A", description=None,
+                           content="<p>a</p>", content_type="html", tags=[])
+    await _send_mockup(db=db, project="P", title="B", description=None,
+                       content="<p>b</p>", content_type="html", tags=[])
+    # Backdate A to the distant past; newest-sorted listing must place it last.
+    await _set_created_at(db=db, id=a["id"], created_at="2020-01-01T00:00:00+00:00")
+    rows = await _list_mockups(db=db, project=None, limit=50, offset=0)
+    assert rows[-1]["id"] == a["id"]
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_rolls_back_file_on_insert_failure(db, tmp_data_dir, monkeypatch):
+    import app.mcp_server as m
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("insert failed")
+
+    monkeypatch.setattr(m, "insert_mockup", boom)
+    with pytest.raises(RuntimeError):
+        await _send_mockup(db=db, project="P", title="T", description=None,
+                           content="<p>x</p>", content_type="html", tags=[])
+    # The written file must not be orphaned on disk.
+    proj_dir = tmp_data_dir / "p"
+    leftover = list(proj_dir.glob("*")) if proj_dir.exists() else []
+    assert leftover == []

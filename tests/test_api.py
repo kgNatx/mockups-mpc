@@ -129,6 +129,45 @@ async def test_upload_unsupported_ext(client):
     assert resp.status_code == 400
     assert "Unsupported" in resp.json()["error"]
 
+
+@pytest.mark.asyncio
+async def test_upload_oversize_returns_413(client, monkeypatch):
+    monkeypatch.setattr("app.routes.api.MAX_CONTENT_SIZE", 10)
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("big.html", b"<p>" + b"x" * 50 + b"</p>", "text/html")},
+        data={"project": "P", "title": "Big"},
+    )
+    assert resp.status_code == 413
+    assert "too large" in resp.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_upload_invalid_utf8_returns_400(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("bad.html", b"\xff\xfe\xfa", "text/html")},
+        data={"project": "P", "title": "Bad UTF8"},
+    )
+    assert resp.status_code == 400
+    assert "UTF-8" in resp.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_upload_bad_project_returns_400(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("ok.html", b"<p>hi</p>", "text/html")},
+        data={"project": "../etc", "title": "Traversal"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_list_bad_project_returns_400(client):
+    resp = await client.get("/api/mockups?project=../etc")
+    assert resp.status_code == 400
+
 @pytest.mark.asyncio
 async def test_upload_no_tags(client, tmp_data_dir):
     resp = await client.post(

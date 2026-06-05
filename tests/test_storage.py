@@ -94,3 +94,18 @@ def test_content_too_large(data_dir):
         write_mockup_file("test-project", "big1", "html", big)
 
 
+def test_content_too_large_binary(data_dir):
+    from app.storage import write_mockup_file, MAX_CONTENT_SIZE
+    big = base64.b64encode(b"x" * (MAX_CONTENT_SIZE + 1)).decode()
+    with pytest.raises(ValueError, match="too large"):
+        write_mockup_file("test-project", "big2", "png", big)
+
+
+def test_write_binary_invalid_base64_raises(data_dir):
+    from app.storage import write_mockup_file
+    # Malformed base64 (length not a multiple of 4 after stripping) raises
+    # binascii.Error, which is a ValueError subclass.
+    with pytest.raises(ValueError):
+        write_mockup_file("test-project", "badb64", "png", "!!!notbase64!!!")
+
+

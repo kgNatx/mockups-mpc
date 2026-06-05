@@ -217,6 +217,26 @@ async def test_init_db_adds_favorite_column_to_legacy_db(tmp_data_dir):
 
 
 @pytest.mark.asyncio
+async def test_init_db_idempotent_on_rerun(tmp_data_dir):
+    # init_db runs on every process start; calling it again on an already-
+    # migrated DB must not error or duplicate the favorite column.
+    now = datetime.now(timezone.utc)
+    db1 = await init_db()
+    await insert_mockup(db1, id="x1", project="P", project_slug="p",
+                        title="X", description="keep", content_type="html",
+                        file_path="p/x1.html", tags=[], created_at=now, updated_at=now)
+    await db1.close()
+
+    db2 = await init_db()  # must not raise
+    cursor = await db2.execute("PRAGMA table_info(mockups)")
+    cols = [row["name"] for row in await cursor.fetchall()]
+    assert cols.count("favorite") == 1
+    row = await get_mockup(db2, "x1")
+    assert row is not None and row["description"] == "keep"
+    await db2.close()
+
+
+@pytest.mark.asyncio
 async def test_mockup_record_has_favorite(db):
     now = datetime.now(timezone.utc)
     await insert_mockup(db, id="r1", project="P", project_slug="p",

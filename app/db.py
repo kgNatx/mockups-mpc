@@ -28,7 +28,6 @@ async def _migrate_favorite_column(db: aiosqlite.Connection) -> None:
     cols = {row["name"] for row in await cursor.fetchall()}
     if "favorite" not in cols:
         await db.execute("ALTER TABLE mockups ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
-        await db.commit()
     await db.execute("CREATE INDEX IF NOT EXISTS idx_mockups_favorite ON mockups(favorite)")
     await db.commit()
 
@@ -37,6 +36,9 @@ async def init_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(str(get_db_path()))
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
+    # Wait up to 5s for a lock rather than failing immediately, so the single-
+    # connection assumption stays robust if a second connection ever appears.
+    await db.execute("PRAGMA busy_timeout=5000")
     await db.executescript(CREATE_TABLE)
     await db.commit()
     await _migrate_favorite_column(db)
@@ -106,11 +108,14 @@ async def list_projects(db: aiosqlite.Connection) -> list[dict]:
     return [dict(row) for row in await cursor.fetchall()]
 
 
-_UNSET = object()
+# Shared sentinel distinguishing "leave description unchanged" (UNSET) from
+# "set description to NULL" (None). Public because callers across module
+# boundaries must pass the same object to preserve the distinction.
+UNSET = object()
 
 
 async def update_mockup(db: aiosqlite.Connection, mockup_id: str, *,
-                         title: str | None = None, description=_UNSET,
+                         title: str | None = None, description=UNSET,
                          tags: list[str] | None = None, file_path: str | None = None,
                          content_type: str | None = None,
                          created_at: str | None = None) -> bool:
@@ -119,7 +124,7 @@ async def update_mockup(db: aiosqlite.Connection, mockup_id: str, *,
     if title is not None:
         sets.append("title = ?")
         params.append(title)
-    if description is not _UNSET:
+    if description is not UNSET:
         sets.append("description = ?")
         params.append(description)
     if tags is not None:
@@ -158,7 +163,7 @@ async def set_favorite(db: aiosqlite.Connection, mockup_id: str, value: bool) ->
 async def count_favorites(db: aiosqlite.Connection) -> int:
     cursor = await db.execute("SELECT COUNT(*) AS n FROM mockups WHERE favorite = 1")
     row = await cursor.fetchone()
-    return row["n"]
+    return int(row["n"])
 
 
 async def delete_mockup(db: aiosqlite.Connection, mockup_id: str) -> bool:
