@@ -81,19 +81,34 @@ when the token env is set (use `monkeypatch.setenv` + the `client` fixture).
 
 ---
 
-## Follow-up 3 — Feed thumbnails
+## Follow-up 3 — Feed thumbnails — SHELVED (2026-06-05)
+
+**Decision (Kyle, 2026-06-05): shelved.** Not worth the cost/complexity right now;
+the feed stays text-only. Revisit only if Kyle reopens it. Reasoning below, kept
+for whoever picks this up later.
 
 **Problem:** the feed (`createFeedItem` in `app/templates/gallery.html`) is
 text-only. Thumbnails were explicitly deferred in the v1.3.0 spec
 (`docs/specs/2026-05-20-favorites-ui-uplift-design.md` — read it for prior
 thinking). Kyle wants the gallery more visual.
 
-**Recommended phased approach:**
+**Why Phase 1 alone doesn't deliver here (the load-bearing fact):** the live
+gallery is **86% HTML** — 370 `html` vs 58 `png`, zero `svg`/`jpg` (queried from
+prod `./data/mockups.db` on 2026-06-05). The original Phase 1 plan below renders
+real thumbnails only for image types and shows a placeholder glyph for `html`, so
+it would cover just the **58 PNGs (14%)** and leave the **370 HTML mockups (86%)**
+as glyphs — i.e. the gallery would look essentially as text-y as it does now. The
+real visual win lives entirely in **rendered HTML thumbnails (Phase 2)**, which is
+the expensive part. So the actual fork is "rendered HTML thumbnails or nothing,"
+NOT "Phase 1 vs Phase 2." If reopened, lean toward keeping Chromium OUT of the
+always-on prod container (sidecar / one-shot renderer writing `<id>.thumb.png`
+into `./data`, main app serves the thumb only if it exists; backfill existing).
+
+**Original phased approach (kept for reference — note Phase 1's weak coverage above):**
 - **Phase 1 (cheap, no new deps):** for image types (`png`/`jpg`/`svg`), the
   thumbnail is just the existing file rendered small via CSS — serve through the
   existing `/view/{id}` and size it in `.feed-item`. For `html` mockups, show a
-  type glyph/placeholder (no render). This gets most of the visual win with zero
-  backend work.
+  type glyph/placeholder (no render). NOTE: only ~14% coverage given current data.
 - **Phase 2 (optional, heavier):** real thumbnails for `html` mockups via a
   headless-render screenshot on upload. This needs a renderer (Playwright/Chromium)
   **in the container** — a big image-size cost. Weigh whether it's worth it vs the
@@ -157,7 +172,9 @@ on purpose. Only revisit if Kyle reports visible title-scroll glitches.
 
 1. Cache-bust (15 min, ships confidence).
 2. Auth lockdown — **ask Kyle the two scope questions first**, then implement.
-3. Thumbnails — Phase 1 first; check the v1.3.0 spec; decide on Phase 2 with Kyle.
+3. ~~Thumbnails~~ — **SHELVED 2026-06-05** (see Follow-up 3). Gallery is 86% HTML,
+   so the cheap path covers only 14%; the real win needs rendered HTML thumbnails,
+   which isn't worth it right now. Don't pick this up unless Kyle reopens it.
 
 Each should be its own branch off `main`, tested, then merged + deployed + (if you
 cut a release) version-bumped and pushed to GHCR per the workflow notes.
