@@ -34,7 +34,17 @@ by adding `COPY VERSION .` to the Dockerfile. Test:
 
 ---
 
-## Follow-up 2 — Auth lockdown (defense-in-depth)
+## Follow-up 2 — Auth lockdown — SHELVED (2026-07-02)
+
+**Decision (Kyle, 2026-07-02): shelved — not worth it for now.** A bearer token is a
+shared secret that has to be manually distributed to every client (agent `curl`
+commands via `~/.claude/CLAUDE.md` + in-app setup guide + MCP `instructions` string;
+MCP tool calls via `.mcp.json` headers). That's churn across all the docs/config to
+defend a server that is **not internet-reachable** — the Traefik LAN-only IP allowlist
+already covers the real threat model. The one narrow win it would buy (a popped-out
+mockup's injected JS can't fire a `DELETE` because it lacks the token) doesn't justify
+the cost right now. Revisit only if the deployment ever becomes internet-exposed, or if
+Kyle reopens it. Original spec kept below for whoever picks it up.
 
 **Problem (review security finding, rated P2 under the LAN-only model):** there is
 **zero application auth**. Every mutating endpoint is open to anyone who can reach
