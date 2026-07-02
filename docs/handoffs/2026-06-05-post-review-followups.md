@@ -154,13 +154,25 @@ on purpose. Only revisit if Kyle reports visible title-scroll glitches.
   `tempfile.mkdtemp()` before `uvicorn.run`, `BASE_URL=http://localhost:<port>`),
   seed via `curl`, and drive it with the Playwright MCP. That's how v1.4.0 was
   verified.
-- **GHCR push is LOCAL, not GitHub Actions.** `.github/workflows/docker.yml`
-  triggers on `v*` tags — **do not push a `v*` tag** (Kyle wants local builds).
-  Release steps: bump `VERSION` + `server.json` (version field **and** the
-  `ghcr.io/...:<ver>` identifier) + add a `CHANGELOG.md` entry; commit; `git push
-  origin main` (only fires `ci.yml` = tests); then
-  `docker build -t ghcr.io/kgnatx/mockups-mpc:<ver> -t ghcr.io/kgnatx/mockups-mpc:latest .`
-  and `docker push` both tags.
+- **GHCR push is LOCAL; the Docker workflow is manual-only.** As of 2026-07-02
+  (commit `cc4496b`), `.github/workflows/docker.yml` is `workflow_dispatch` only —
+  it **no longer triggers on `v*` tags**, so tagging a release is now safe and does
+  NOT kick off an Actions build. (This inverts the old "never push a `v*` tag" rule;
+  that rule existed only to dodge the redundant Actions build, which is now off.)
+  **Full release process (all four steps):**
+  1. Bump `VERSION` + `server.json` (version field **and** the `ghcr.io/...:<ver>`
+     identifier) + add a `CHANGELOG.md` entry; commit; `git push origin main`
+     (fires `ci.yml` = tests only).
+  2. Build + push the image locally:
+     `docker build -t ghcr.io/kgnatx/mockups-mpc:<ver> -t ghcr.io/kgnatx/mockups-mpc:latest . && docker push` (both tags).
+  3. Tag + GitHub Release:
+     `gh release create v<ver> --target main --title "v<ver>" --notes "<CHANGELOG entry>"`.
+     Targeting `main` HEAD keeps the tag on a commit whose workflow is manual-only,
+     so no build fires.
+  4. Publish to the MCP registry: `mcp-publisher login github` (interactive — Kyle
+     must authorize in a browser; the saved token expires) then `mcp-publisher
+     publish`. The registry **rejects duplicate versions** (works only on a fresh
+     bump) and **caps `description` at 100 chars** (`mcp-publisher validate` first).
 - **Deployment is LAN-only** behind a Traefik IP-allowlist on a trusted network —
   NOT internet-exposed. Weight security findings by that threat model (accidental
   footguns from trusted agents > untrusted-internet attackers).
