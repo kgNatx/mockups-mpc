@@ -37,7 +37,7 @@ Every time an AI tool generates a mockup, there's no consistent place for it to 
                                            │  └────────────────┘  │
                                            │  ┌────────────────┐  │
                                            │  │  SQLite (WAL)  │  │
-                                           │  │  + Filesystem   │  │
+                                           │  │  + Filesystem  │  │
                                            │  └────────────────┘  │
                                            └──────────────────────┘
 ```
