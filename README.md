@@ -1,5 +1,8 @@
 # Mockups MPC
 
+[![CI](https://github.com/kgNatx/mockups-mpc/actions/workflows/ci.yml/badge.svg)](https://github.com/kgNatx/mockups-mpc/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A self-hosted MCP server and gallery for AI-generated mockups. AI tools send mockups via MCP tool calls, the server stores and catalogs them, and you browse everything in a clean web gallery.
 
 **Token-efficient by design.** MCP tool parameters flow through the model context, so sending a large HTML file via a tool call wastes tokens. Mockups MPC provides an HTTP upload endpoint (`POST /api/upload`) — the AI writes the file locally and `curl`s it to the server, keeping file content entirely out of the model context. MCP tools handle lightweight operations only: listing, metadata, tagging, and deletion.
@@ -223,7 +226,7 @@ pytest tests/ -v
 uvicorn app.main:app --reload
 ```
 
-47 tests covering storage, database, MCP tools, API routes, upload, and gallery.
+The test suite covers storage, database, MCP tools, API routes, upload, and gallery.
 
 ## License
 
