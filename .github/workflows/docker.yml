@@ -1,8 +1,11 @@
 name: Docker
 
+# Manual-only. Images are built locally and pushed to GHCR by hand, so this
+# workflow intentionally does NOT trigger on `v*` tag pushes — that lets us
+# tag releases without kicking off a redundant Actions build. Run it from the
+# Actions tab (workflow_dispatch) if an Actions-side build is ever wanted.
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
