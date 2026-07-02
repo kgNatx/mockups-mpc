@@ -3,7 +3,7 @@
 [![CI](https://github.com/kgNatx/mockups-mpc/actions/workflows/ci.yml/badge.svg)](https://github.com/kgNatx/mockups-mpc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A self-hosted MCP server and gallery for AI-generated mockups. AI tools send mockups via MCP tool calls, the server stores and catalogs them, and you browse everything in a clean web gallery.
+A self-hosted gallery for AI-generated mockups — with an MCP interface. Instead of cluttering your repo, mockups get a permanent home and a clean web gallery you can browse. AI tools upload them over a direct `curl` call; MCP handles only the lightweight coordination — listing, metadata, tagging, and retrieval.
 
 **Token-efficient by design.** MCP tool parameters flow through the model context, so sending a large HTML file via a tool call wastes tokens. Mockups MPC provides an HTTP upload endpoint (`POST /api/upload`) — the AI writes the file locally and `curl`s it to the server, keeping file content entirely out of the model context. MCP tools handle lightweight operations only: listing, metadata, tagging, and deletion.
 
@@ -17,7 +17,7 @@ A self-hosted MCP server and gallery for AI-generated mockups. AI tools send moc
 
 ## Why
 
-Every time an AI tool generates a mockup, there's no consistent place for it to go. Files get scattered, sessions lose context, and there's no history. Mockups MPC solves this: the AI sends the mockup to the server, you view it in the gallery, and the local file gets cleaned up. One place for everything.
+Every time an AI tool generates a mockup, there's no consistent place for it to go — so they pile up in your repo or get scattered across temp dirs, sessions lose track of them, and there's no history. Mockups MPC gives them a permanent home instead: the AI pushes the mockup to the gallery, you browse it there, and the local file gets cleaned up. One place for everything, nothing cluttering your project.
 
 ## Architecture
 
