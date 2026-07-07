@@ -93,6 +93,14 @@ body {
   flex-direction: column;
   position: relative;
   z-index: 10;
+  transition: margin-left 0.3s var(--ease-out);
+}
+
+/* Desktop collapse: slide the sidebar off the left edge so the viewer takes
+   the full width. Mobile uses a fixed-position drawer instead (see below),
+   where this negative margin is harmless. */
+.shell.sb-collapsed .sidebar {
+  margin-left: calc(-1 * var(--sidebar-w));
 }
 
 /* -- Brand -- */
@@ -518,7 +526,7 @@ body {
   min-height: var(--meta-h);
   display: flex;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 20px 0 calc(var(--meta-h) + 4px);  /* left room for the hamburger */
   gap: 16px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-dim);
@@ -614,6 +622,7 @@ body {
 
 .meta-bar.empty {
   justify-content: center;
+  padding-left: 0;   /* center the hint across the full bar; hamburger floats clear at left */
 }
 
 .meta-bar.empty .meta-hint {
@@ -722,9 +731,93 @@ body {
 .feed-item:nth-child(19) { animation-delay: 0.28s; }
 .feed-item:nth-child(20) { animation-delay: 0.30s; }
 
-/* -- Responsive (collapse sidebar at narrow widths) -- */
+/* ============================================================
+   RESPONSIVE — off-canvas sidebar drawer on small screens
+   ============================================================ */
+
+/* Hamburger toggle is shown at every viewport: on desktop it collapses the
+   sidebar (reflow), on mobile it opens the drawer. The scrim stays desktop-
+   hidden and is revealed only in the mobile media query below. */
+.menu-toggle {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--meta-h);
+  height: var(--meta-h);
+  z-index: 4;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.12s ease;
+}
+
+.menu-toggle:hover { color: var(--accent); }
+
+.menu-toggle svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+}
+
+.sidebar-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 15;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s var(--ease-out);
+}
+
 @media (max-width: 720px) {
-  :root { --sidebar-w: 260px; }
+  /* Sidebar leaves the flex flow and becomes a drawer sliding over the
+     viewer, so the viewer gets the full width by default. */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 300px;
+    min-width: 0;
+    max-width: 86vw;
+    transform: translateX(-100%);
+    transition: transform 0.3s var(--ease-out);
+    z-index: 20;
+  }
+
+  .shell.nav-open .sidebar {
+    transform: translateX(0);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+  }
+
+  .sidebar-scrim { display: block; }
+
+  .shell.nav-open .sidebar-scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Tighten the bar and shed the metadata that can't fit a phone width —
+     keep the star, title, fullscreen, and pop-out. (The hamburger and its
+     left padding are already applied at every viewport.) */
+  .meta-bar { gap: 12px; }
+  /* Scoped under .meta-bar so these win over the later single-class base
+     rules (e.g. .viewport-seg { display: flex }) regardless of source order. */
+  .meta-bar .meta-sep,
+  .meta-bar .meta-desc,
+  .meta-bar .meta-tags,
+  .meta-bar .meta-project,
+  .meta-bar .meta-time,
+  .meta-bar .viewport-seg { display: none; }
+  .meta-title { max-width: none; }
 }
 
 /* On very short viewports the 50vh feed floor + fixed brand/filter can exceed

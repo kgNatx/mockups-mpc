@@ -10,7 +10,7 @@
   <div class="shell">
 
     <!-- ===== SIDEBAR ===== -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <h1>Mockups MPC</h1>
         <div class="brand-sub-row">
@@ -47,6 +47,10 @@
 
     <!-- ===== MAIN VIEWER ===== -->
     <main class="main">
+      <button class="menu-toggle" id="menu-toggle" type="button"
+              aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
+        <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
       <div class="meta-bar empty" id="meta-bar">
         <span class="meta-hint">Select a mockup to preview</span>
       </div>
@@ -63,6 +67,9 @@
         </div>
       </div>
     </main>
+
+    <!-- ===== MOBILE DRAWER SCRIM ===== -->
+    <div class="sidebar-scrim" id="sidebar-scrim"></div>
 
   </div>
 
@@ -94,6 +101,54 @@
   var filterInput     = document.getElementById("filter-input");
   var metaBar         = document.getElementById("meta-bar");
   var viewer          = document.getElementById("viewer");
+  var shell           = document.querySelector(".shell");
+  var menuToggle      = document.getElementById("menu-toggle");
+  var sidebarScrim    = document.getElementById("sidebar-scrim");
+
+  /* ── Sidebar Toggle ── */
+  // Two orthogonal states, each scoped to its own viewport regime so resizing
+  // across the breakpoint can never strand a weird state:
+  //   mobile  → "nav-open"      : off-canvas drawer slides in (default hidden)
+  //   desktop → "sb-collapsed"  : sidebar slides out to reclaim width (default shown)
+  var mobileMq = window.matchMedia("(max-width: 720px)");
+
+  function syncToggleAria() {
+    if (!menuToggle) return;
+    var expanded = mobileMq.matches
+      ? shell.classList.contains("nav-open")        // drawer open?
+      : !shell.classList.contains("sb-collapsed");  // sidebar showing?
+    menuToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+
+  // Close the mobile drawer. On desktop nav-open is inert, so this is a safe
+  // no-op there (e.g. when called from selectMockup or Escape).
+  function setNav(open) {
+    shell.classList.toggle("nav-open", open);
+    syncToggleAria();
+  }
+
+  function toggleSidebar() {
+    if (mobileMq.matches) {
+      setNav(!shell.classList.contains("nav-open"));
+    } else {
+      shell.classList.toggle("sb-collapsed");
+      syncToggleAria();
+    }
+  }
+
+  if (menuToggle) {
+    menuToggle.addEventListener("click", toggleSidebar);
+  }
+  if (sidebarScrim) {
+    sidebarScrim.addEventListener("click", function () { setNav(false); });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") setNav(false);
+  });
+  // Keep aria-expanded honest when crossing the breakpoint (the two states
+  // mean different things on each side).
+  mobileMq.addEventListener("change", syncToggleAria);
+  syncToggleAria();
 
   /* ── Helpers ── */
   function el(tag, cls, attrs) {
@@ -534,6 +589,9 @@
   /* ── Mockup Selection ── */
   function selectMockup(id) {
     state.activeMockupId = id;
+
+    // On mobile, dismiss the drawer so the chosen mockup is actually visible.
+    setNav(false);
 
     // Update URL
     var url = new URL(window.location);

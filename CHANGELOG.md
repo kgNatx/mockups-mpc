@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.4.2] - 2026-07-07
+
+### Added
+- Mobile support for the gallery. Below 720px the sidebar becomes an off-canvas drawer with a hamburger toggle, a tap-to-dismiss scrim, and auto-close when a mockup is selected, so the viewer gets the full width instead of a sliver. The meta bar sheds the metadata that can't fit a phone (description, tags, project, time, viewport toggles), keeping the star, title, fullscreen, and pop-out.
+- The hamburger toggle is present at every viewport: on desktop it collapses the sidebar (reflow) to give the viewer full width; on mobile it opens the drawer.
+
 ## [1.4.1] - 2026-06-05
 
 ### Fixed
