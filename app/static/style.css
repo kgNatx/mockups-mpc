@@ -387,7 +387,6 @@ body {
 .feed-item:focus-visible,
 .project-item:focus-visible,
 .feed-action-btn:focus-visible,
-.vp-opt:focus-visible,
 .sort-opt:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -403,6 +402,8 @@ body {
   border-color: var(--border-dim);
   color: var(--text-secondary);
 }
+
+.feed-action-btn svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .feed-action-copy.copied {
   color: var(--type-svg);
@@ -527,7 +528,7 @@ body {
   display: flex;
   align-items: center;
   padding: 0 20px 0 calc(var(--meta-h) + 4px);  /* left room for the hamburger */
-  gap: 16px;
+  gap: 4px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-dim);
   position: relative;
@@ -541,31 +542,17 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 280px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px 0 2px;
   letter-spacing: -0.01em;
 }
 
 .meta-sep {
   width: 1px;
   height: 16px;
+  margin: 0 6px;
   background: var(--border-dim);
-  flex-shrink: 0;
-}
-
-.meta-desc {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-
-.meta-tags {
-  display: flex;
-  gap: 4px;
   flex-shrink: 0;
 }
 
@@ -579,45 +566,6 @@ body {
   background: var(--accent-glow);
   color: var(--accent);
   border: 1px solid rgba(34, 211, 238, 0.12);
-}
-
-.meta-project {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  flex-shrink: 0;
-}
-
-.meta-time {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 300;
-  color: var(--text-ghost);
-  flex-shrink: 0;
-}
-
-.meta-popout {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--accent-dim);
-  text-decoration: none;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  flex-shrink: 0;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-dim);
-  transition: all 0.12s ease;
-}
-
-.meta-popout:hover {
-  color: var(--accent);
-  border-color: var(--accent-dim);
-  background: var(--accent-glow);
 }
 
 .meta-bar.empty {
@@ -808,16 +756,10 @@ body {
   /* Tighten the bar and shed the metadata that can't fit a phone width —
      keep the star, title, fullscreen, and pop-out. (The hamburger and its
      left padding are already applied at every viewport.) */
-  .meta-bar { gap: 12px; }
+  .meta-bar { gap: 2px; }
   /* Scoped under .meta-bar so these win over the later single-class base
-     rules (e.g. .viewport-seg { display: flex }) regardless of source order. */
-  .meta-bar .meta-sep,
-  .meta-bar .meta-desc,
-  .meta-bar .meta-tags,
-  .meta-bar .meta-project,
-  .meta-bar .meta-time,
-  .meta-bar .viewport-seg { display: none; }
-  .meta-title { max-width: none; }
+     rules regardless of source order. */
+  .meta-bar .meta-sep { display: none; }
 }
 
 /* On very short viewports the 50vh feed floor + fixed brand/filter can exceed
@@ -876,36 +818,57 @@ body {
 .feed-item.has-fav .feed-title { padding-right: 24px; }
 
 /* ============================================================
-   VIEWER CHROME — VIEWPORT TOGGLES + FULLSCREEN + META STAR
+   VIEWER CHROME — HEADER ICON BUTTONS, POPOVERS, META STAR
    ============================================================ */
-/* Viewport size toggles in the meta bar */
-.viewport-seg {
-  display: flex; background: var(--bg-raised); border: 1px solid var(--border-dim);
-  border-radius: var(--radius-sm); padding: 2px; gap: 2px; flex-shrink: 0;
-}
-.vp-opt {
-  display: flex; align-items: center; gap: 4px; font-family: var(--font-mono);
-  font-size: 9px; font-weight: 500; letter-spacing: 0.03em; text-transform: uppercase;
-  color: var(--text-tertiary); padding: 4px 8px; border-radius: 3px; cursor: pointer;
-  transition: all 0.12s ease; user-select: none;
-}
-.vp-opt:hover { color: var(--text-secondary); }
-.vp-opt.active { background: var(--bg-active); color: var(--accent); }
-.vp-opt svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 1.6; }
-
 .meta-icon-btn {
-  display: flex; align-items: center; justify-content: center; width: 28px; height: 24px;
-  border: 1px solid var(--border-dim); border-radius: var(--radius-sm);
-  background: var(--bg-raised); color: var(--text-tertiary); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-tertiary); cursor: pointer; padding: 0;
   flex-shrink: 0; transition: all 0.12s ease;
 }
-.meta-icon-btn:hover { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
-.meta-icon-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.meta-icon-btn:hover,
+.meta-icon-btn[aria-expanded="true"] { color: var(--accent); border-color: var(--border-dim); background: var(--accent-glow); }
+.meta-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.meta-icon-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.meta-icon-btn.copied { color: var(--type-svg); }
+.meta-icon-btn.failed { color: var(--type-jpg); }
+
+/* Header popovers (details, viewport), right-aligned under the bar */
+.meta-pop {
+  display: none;
+  position: absolute; top: calc(var(--meta-h) - 4px); right: 12px; z-index: 10;
+  max-width: calc(100vw - 24px);
+  background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.meta-pop.open { display: block; }
+.meta-info { width: 320px; padding: 12px 14px; }
+.meta-info-key {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-ghost); margin: 10px 0 3px;
+}
+.meta-info-key:first-child { margin-top: 0; }
+.meta-info-val { font-size: 12px; line-height: 1.5; color: var(--text-secondary); overflow-wrap: anywhere; }
+.meta-info-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* Viewport: device icon + current size, choices in a small menu */
+.meta-bar .meta-vp-btn { width: auto; padding: 0 6px; gap: 4px; }
+.meta-vp-label { font-family: var(--font-mono); font-size: 10px; }
+.meta-vp-menu { width: 170px; padding: 4px; }
+.meta-vp-opt {
+  display: flex; justify-content: space-between; align-items: center; width: 100%;
+  padding: 6px 8px; border: none; border-radius: var(--radius-sm); background: transparent;
+  font-family: var(--font-sans); font-size: 12px; color: var(--text-secondary); cursor: pointer; text-align: left;
+}
+.meta-vp-opt:hover { background: var(--bg-hover); color: var(--text-primary); }
+.meta-vp-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.meta-vp-opt.active { color: var(--accent); }
+.meta-vp-size { font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); }
 
 /* Clickable favorite toggle next to the open mockup's title */
 .meta-bar .meta-star {
   background: transparent; border: none; cursor: pointer; padding: 2px;
-  font-size: 15px; line-height: 1; margin-right: 4px; color: var(--text-tertiary);
+  font-size: 15px; line-height: 1; color: var(--text-tertiary);
   transition: color 0.12s ease, transform 0.12s var(--ease-spring);
 }
 .meta-bar .meta-star:hover { color: var(--star); transform: scale(1.15); }

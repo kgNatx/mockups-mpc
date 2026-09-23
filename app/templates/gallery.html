@@ -422,21 +422,23 @@
     });
     actions.appendChild(star);
 
-    var copyBtn = el("button", "feed-action-btn feed-action-copy", { title: "Copy link", type: "button" });
+    var copyBtn = el("button", "feed-action-btn feed-action-copy", { title: "Copy gallery link", type: "button" });
     copyBtn.appendChild(text("\u{1F517}"));
     copyBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      var galleryUrl = window.location.origin + "/?mockup=" + encodeURIComponent(mockup.id);
-      copyToClipboard(galleryUrl).then(function (ok) {
-        copyBtn.textContent = ok ? "\u2713" : "\u2717";
-        copyBtn.classList.add(ok ? "copied" : "failed");
-        setTimeout(function () {
-          copyBtn.textContent = "\u{1F517}";
-          copyBtn.classList.remove("copied", "failed");
-        }, 1500);
-      });
+      copyWithFlash(copyBtn, galleryLink(mockup), "\u2713", "\u2717");
     });
     actions.appendChild(copyBtn);
+
+    // Direct link: the bare mockup at /view/{id}, with no gallery UI around it.
+    var directBtn = el("button", "feed-action-btn feed-action-copy", { title: "Copy direct link", type: "button" });
+    // Inline SVG (arrow out of a box), not a text glyph: no font dependency.
+    directBtn.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
+    directBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      copyWithFlash(directBtn, directLink(mockup), "\u2713", "\u2717");
+    });
+    actions.appendChild(directBtn);
 
     var delBtn = el("button", "feed-action-btn feed-action-delete", { title: "Delete", type: "button" });
     delBtn.appendChild(text("\u2715"));
@@ -492,6 +494,30 @@
   }
 
   /* ── Clipboard ── */
+  function galleryLink(mockup) {
+    return window.location.origin + "/?mockup=" + encodeURIComponent(mockup.id);
+  }
+
+  function directLink(mockup) {
+    return window.location.origin + "/view/" + encodeURIComponent(mockup.id);
+  }
+
+  // Copy `str`, flash the button's label to okText/failText, then restore its original
+  // content (text or icon markup). The idle markup is captured once, so a click during
+  // the flash can't capture "✓" as the thing to restore.
+  function copyWithFlash(btn, str, okText, failText) {
+    if (btn._idleHTML === undefined) btn._idleHTML = btn.innerHTML;
+    copyToClipboard(str).then(function (ok) {
+      btn.textContent = ok ? okText : failText;
+      btn.classList.add(ok ? "copied" : "failed");
+      clearTimeout(btn._flashTimer);
+      btn._flashTimer = setTimeout(function () {
+        btn.innerHTML = btn._idleHTML;
+        btn.classList.remove("copied", "failed");
+      }, 1500);
+    });
+  }
+
   function copyToClipboard(str) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       return navigator.clipboard.writeText(str).then(function () { return true; }).catch(function () { return fallbackCopy(str); });
@@ -643,56 +669,52 @@
     });
     metaBar.appendChild(metaStar);
 
-    var title = el("span", "meta-title");
+    // Actions sit beside the star as icons, so the title keeps the width.
+    var copyDirect = el("button", "meta-icon-btn", { title: "Copy direct link (no gallery UI)", type: "button" });
+    copyDirect.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>');
+    copyDirect.addEventListener("click", function () {
+      copyWithFlash(copyDirect, directLink(mockup), "\u2713", "\u2717");
+    });
+    metaBar.appendChild(copyDirect);
+
+    var popout = el("a", "meta-icon-btn", {
+      href: "/view/" + encodeURIComponent(mockup.id),
+      target: "_blank", rel: "noopener", title: "Pop out"
+    });
+    popout.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
+    metaBar.appendChild(popout);
+
+    metaBar.appendChild(el("span", "meta-sep"));
+
+    var title = el("span", "meta-title", { title: mockup.title });
     title.appendChild(text(mockup.title));
     metaBar.appendChild(title);
 
-    if (mockup.description) {
-      metaBar.appendChild(el("span", "meta-sep"));
-      var desc = el("span", "meta-desc");
-      desc.appendChild(text(mockup.description));
-      metaBar.appendChild(desc);
-    }
-
-    if (mockup.tags && mockup.tags.length > 0) {
-      metaBar.appendChild(el("span", "meta-sep"));
-      var tagsWrap = el("span", "meta-tags");
-      mockup.tags.forEach(function (t) {
-        var tag = el("span", "meta-tag");
-        tag.appendChild(text(t));
-        tagsWrap.appendChild(tag);
-      });
-      metaBar.appendChild(tagsWrap);
-    }
-
-    metaBar.appendChild(el("span", "meta-sep"));
-
-    var proj = el("span", "meta-project");
-    proj.appendChild(text(mockup.project));
-    metaBar.appendChild(proj);
-
-    metaBar.appendChild(el("span", "meta-sep"));
-
-    var time = el("span", "meta-time");
-    time.appendChild(text(formatTime(mockup.created_at)));
-    metaBar.appendChild(time);
-
-    // spacer
-    var spacer = el("span", "");
-    spacer.style.flex = "1";
-    metaBar.appendChild(spacer);
-
     if (mockup.content_type === "html") {
-      var vpSeg = el("div", "viewport-seg");
-      [["mobile", "375"], ["tablet", "768"], ["desktop", "Full"]].forEach(function (pair) {
-        var opt = el("div", "vp-opt" + (pair[0] === "desktop" ? " active" : ""), { "data-vp": pair[0] });
-        opt.appendChild(text(pair[1]));
-        var activate = function () { setViewport(pair[0], vpSeg); };
-        opt.addEventListener("click", activate);
-        makeActivatable(opt, activate);
-        vpSeg.appendChild(opt);
+      // Viewport: one device icon labelled with the current size, choices in a menu.
+      var vpBtn = el("button", "meta-icon-btn meta-vp-btn", {
+        title: "Viewport", type: "button", "aria-haspopup": "true", "aria-expanded": "false"
       });
-      metaBar.appendChild(vpSeg);
+      vpBtn.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>');
+      var vpLabel = el("span", "meta-vp-label");
+      vpLabel.appendChild(text("Full"));
+      vpBtn.appendChild(vpLabel);
+      var vpMenu = el("div", "meta-pop meta-vp-menu");
+      [["mobile", "Mobile", "375"], ["tablet", "Tablet", "768"], ["desktop", "Desktop", "Full"]].forEach(function (v) {
+        var row = el("button", "meta-vp-opt" + (v[0] === "desktop" ? " active" : ""), { type: "button" });
+        row.appendChild(text(v[1]));
+        var size = el("span", "meta-vp-size");
+        size.appendChild(text(v[2]));
+        row.appendChild(size);
+        row.addEventListener("click", function () {
+          setViewport(v[0]);
+          vpMenu.querySelectorAll(".meta-vp-opt").forEach(function (r) { r.classList.toggle("active", r === row); });
+          vpLabel.textContent = v[2];
+          closeMenus();
+        });
+        vpMenu.appendChild(row);
+      });
+      addMenu(vpBtn, vpMenu);
 
       var fsBtn = el("button", "meta-icon-btn", { title: "Fullscreen", type: "button" });
       fsBtn.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>');
@@ -702,18 +724,72 @@
       metaBar.appendChild(fsBtn);
     }
 
-    var popout = el("a", "meta-popout", {
-      href: "/view/" + encodeURIComponent(mockup.id),
-      target: "_blank", rel: "noopener"
+    // Description, tags, project and time live in a popover behind the info button.
+    var infoBtn = el("button", "meta-icon-btn", {
+      title: "Details", type: "button", "aria-haspopup": "true", "aria-expanded": "false"
     });
-    popout.appendChild(text("Pop out"));
-    metaBar.appendChild(popout);
+    infoBtn.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>');
+    var info = el("div", "meta-pop meta-info", { role: "dialog", "aria-label": "Mockup details" });
+    if (mockup.description) addInfoField(info, "Description", mockup.description);
+    if (mockup.tags && mockup.tags.length > 0) {
+      var tagsWrap = el("div", "meta-info-tags");
+      mockup.tags.forEach(function (t) {
+        var tag = el("span", "meta-tag");
+        tag.appendChild(text(t));
+        tagsWrap.appendChild(tag);
+      });
+      addInfoField(info, "Tags", tagsWrap);
+    }
+    addInfoField(info, "Project", mockup.project);
+    addInfoField(info, "Created", formatTime(mockup.created_at));
+    addMenu(infoBtn, info);
   }
 
-  function setViewport(size, segEl) {
-    segEl.querySelectorAll(".vp-opt").forEach(function (o) {
-      o.classList.toggle("active", o.getAttribute("data-vp") === size);
+  // Append a header button and the popover it toggles. One popover is open at a time.
+  function addMenu(btn, pop) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var wasOpen = pop.classList.contains("open");
+      closeMenus();
+      if (!wasOpen) {
+        pop.classList.add("open");
+        btn.setAttribute("aria-expanded", "true");
+      }
     });
+    pop.addEventListener("click", function (e) { e.stopPropagation(); });
+    metaBar.appendChild(btn);
+    metaBar.appendChild(pop);
+  }
+
+  function addInfoField(info, label, value) {
+    var k = el("div", "meta-info-key");
+    k.appendChild(text(label));
+    info.appendChild(k);
+    if (typeof value === "string") {
+      var v = el("div", "meta-info-val");
+      v.appendChild(text(value));
+      info.appendChild(v);
+    } else {
+      info.appendChild(value);
+    }
+  }
+
+  function closeMenus() {
+    metaBar.querySelectorAll(".meta-pop.open").forEach(function (p) { p.classList.remove("open"); });
+    metaBar.querySelectorAll('[aria-haspopup][aria-expanded="true"]').forEach(function (b) {
+      b.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  document.addEventListener("click", closeMenus);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeMenus();
+  });
+  // A click inside the mockup lands in its iframe and never reaches `document`;
+  // the window losing focus to the iframe is the signal instead.
+  window.addEventListener("blur", closeMenus);
+
+  function setViewport(size) {
     viewer.classList.remove("vp-mobile", "vp-tablet");
     if (size === "mobile") viewer.classList.add("vp-mobile");
     else if (size === "tablet") viewer.classList.add("vp-tablet");
