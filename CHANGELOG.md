@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- On touch screens the feed row's always-visible action buttons no longer sit over the title and meta line; the row reserves their width. The meta line stays on one line at every width, with a long project badge truncated by an ellipsis instead of wrapping.
+
 ## [1.4.3] - 2026-09-23
 
 ### Added

@@ -380,6 +380,11 @@ body {
 
 @media (hover: none) {
   .feed-action-btn { opacity: 0.6; }
+  /* The actions are always visible here, so reserve their width (8px inset +
+     4 × 24px buttons + 3 × 2px gaps, plus breathing room) instead of letting
+     them sit over the title and meta line. */
+  .feed-item { padding-right: 114px; }
+  .sidebar-feed .feed-item.has-fav .feed-title { padding-right: 0; }
 }
 
 /* Visible focus ring for keyboard users on the otherwise non-semantic,
@@ -427,7 +432,13 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
+
+/* One line, always: type and time keep their width; a long project badge
+   shrinks with an ellipsis instead of wrapping (narrow touch rows). */
+.feed-meta > * { white-space: nowrap; flex-shrink: 0; }
+.feed-meta > .feed-badge { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 .feed-badge {
   font-family: var(--font-mono);
