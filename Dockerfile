@@ -14,4 +14,6 @@ LABEL io.modelcontextprotocol.server.name="io.github.kgNatx/mockups-gallery"
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers + --forwarded-allow-ips let uvicorn trust Traefik's X-Forwarded-Proto,
+# so redirects (e.g. /mcp -> /mcp/) keep the https scheme instead of downgrading to http.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]

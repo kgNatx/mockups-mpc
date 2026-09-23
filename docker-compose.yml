@@ -7,6 +7,10 @@ services:
       - ./data:/app/data
     environment:
       - BASE_URL=${BASE_URL}
+      # DNS-rebinding host guard (FastMCP 3.x) rejects any Host not in this list with 421.
+      # Behind Traefik the public domain must be trusted explicitly, else /mcp/ returns 421.
+      - 'FASTMCP_HTTP_ALLOWED_HOSTS=["${SITE_DOMAIN}"]'
+      - 'FASTMCP_HTTP_ALLOWED_ORIGINS=["https://${SITE_DOMAIN}"]'
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK}"
