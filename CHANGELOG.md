@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.4.3] - 2026-09-23
+
+### Added
+- Copy a direct link to a mockup: `/view/{id}` serves the mockup alone, with no gallery UI. Available from the feed row (next to the gallery-link button) and the viewer header.
+
+### Changed
+- Compact viewer header. Favorite, copy direct link and pop out sit next to the menu toggle as icons, so the title gets the remaining width instead of a 280px cap. Description, tags, project and created time move into a details popover. The 375 / 768 / Full switch becomes a single device-icon menu labelled with the current size, and is now available on phones too.
+
+### Fixed
+- The MCP endpoint works behind a reverse proxy again. FastMCP 3.x rejects any `Host` other than localhost with HTTP 421; the public domain is now allowed via `FASTMCP_HTTP_ALLOWED_HOSTS` / `FASTMCP_HTTP_ALLOWED_ORIGINS`, and uvicorn runs with `--proxy-headers` so `/mcp` redirects keep the `https` scheme.
+
 ## [1.4.2] - 2026-07-07
 
 ### Added
