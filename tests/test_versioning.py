@@ -436,3 +436,27 @@ async def test_delete_design_racing_add_version_leaves_no_files(db, tmp_data_dir
     assert not (tmp_data_dir / "proj" / f"{mid}.html").exists()
     assert results[0] is None
     assert results[1] is None or isinstance(results[1], versioning.NotFound)
+
+
+async def test_cancel_after_commit_keeps_the_file(db, tmp_data_dir, monkeypatch):
+    import asyncio
+    mid = await _design(db)
+    real_commit = db.commit
+
+    async def commit_then_cancelled():
+        await real_commit()  # aiosqlite's worker thread finished the COMMIT...
+        raise asyncio.CancelledError()  # ...but the awaiting task was cancelled
+    monkeypatch.setattr(db, "commit", commit_then_cancelled)
+    with pytest.raises(asyncio.CancelledError):
+        await _add(db, mid, "Privacy page — draft 2")
+    v2 = await get_version(db, mid, 2)
+    assert v2 is not None
+    assert (tmp_data_dir / v2["file_path"]).exists()  # the row's file is kept
+
+
+async def test_tag_design_adds_and_removes_under_lock(db):
+    mid = await _design(db)  # tags ["ui"]
+    await versioning.tag_design(db, mid, add=["a", "b"], remove=["ui"])
+    assert (await get_mockup(db, mid))["tags"] == ["a", "b"]
+    with pytest.raises(versioning.NotFound):
+        await versioning.tag_design(db, "nope", add=["x"])

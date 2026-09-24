@@ -8,7 +8,7 @@ from pydantic import Field
 from app import config, versioning
 from app.db import (
     get_alias, get_mockup, get_versions, list_mockups, list_projects,
-    update_mockup as db_update_mockup, UNSET,
+    UNSET,
 )
 from app.storage import slugify_project
 
@@ -134,6 +134,8 @@ async def _get_mockup(*, db: aiosqlite.Connection, id: str,
     mockup_id, num = await _resolve_or_raise(db, id, version)
     if is_alias:
         design_row = await get_mockup(db, mockup_id)
+    if design_row is None:  # deleted between the reads above
+        raise versioning.NotFound(f"Mockup not found: {id}")
 
     versions = await get_versions(db, mockup_id)  # newest (highest number) first
     result = dict(design_row)
@@ -167,6 +169,8 @@ async def _update_mockup(*, db: aiosqlite.Connection, id: str,
         raise versioning.NotFound(f"Mockup not found: {id}")
     mockup_id, _ = resolved  # id may be an alias; every write below targets the design
     existing = await get_mockup(db, mockup_id)
+    if existing is None:  # deleted since resolve
+        raise versioning.NotFound(f"Mockup not found: {id}")
     if content_type is not None and content is None:
         raise ValueError(
             "content_type can only be changed by also supplying new content, "
@@ -180,9 +184,7 @@ async def _update_mockup(*, db: aiosqlite.Connection, id: str,
         ct = content_type or existing["content_type"]
         await versioning.add_version(
             db, mockup_id, title=new_title, description=new_description,
-            content_type=ct, content=content)
-        if tags is not None:
-            await db_update_mockup(db, mockup_id, tags=tags)
+            content_type=ct, content=content, replace_tags=tags)
     else:
         # Metadata-only: still renames the design.
         await versioning.update_design(
@@ -212,13 +214,7 @@ async def _tag_mockup(*, db: aiosqlite.Connection, id: str,
     if resolved is None:
         raise versioning.NotFound(f"Mockup not found: {id}")
     mockup_id, _ = resolved  # id may be an alias; tags live on the design
-    existing = await get_mockup(db, mockup_id)
-    current = set(existing["tags"])
-    if add:
-        current.update(add)
-    if remove:
-        current -= set(remove)
-    await db_update_mockup(db, mockup_id, tags=sorted(current))
+    await versioning.tag_design(db, mockup_id, add=add, remove=remove)
     return await _get_mockup(db=db, id=mockup_id)
 
 

@@ -119,6 +119,7 @@
     offset: 0,
     limit: 50,
     loading: false,
+    loadFailed: false,     // the last feed load failed: the poll reloads until one succeeds
     exhausted: false,
     scopeFilterText: ""
   };
@@ -466,7 +467,8 @@
       data = await resp.json();
     } catch (e) {
       // Surface the failure instead of silently freezing the feed forever.
-      // The auto-refresh poll will retry and recover on the next tick.
+      // loadFailed makes the next poll tick retry the load (see pollForUpdates).
+      state.loadFailed = true;
       if (reset) {
         feedStatusEl.textContent = "Couldn't load — retrying…";
         feedStatusEl.style.display = "";
@@ -482,8 +484,10 @@
 
     if (reset) state.mockups = data;
     else state.mockups = state.mockups.concat(data);
+    state.loadFailed = false;
 
     renderFeed(reset);
+    rebaselinePoll();
   }
 
   function renderFeed(isReset) {
@@ -913,6 +917,7 @@
       if (state.activeProject === FAVORITES && !next) {
         state.mockups = state.mockups.filter(function (m) { return m.id !== mockup.id; });
         renderFeed(true);
+        rebaselinePoll();
       }
     } catch (e) {
       mockup.favorite = !next;        // rollback
@@ -963,6 +968,7 @@
     }
 
     renderFeed(true);
+    rebaselinePoll();
     Promise.all([loadProjects(), loadFavoritesCount()]).then(renderProjects);
   }
 
@@ -1305,49 +1311,61 @@
 
   /* ── Auto-refresh ── */
   var POLL_INTERVAL = 5000;
-  // The last probe: its URL and a signature of what it returned. A change is
-  // only a change when the same probe answers differently.
+  // What the feed showed when it last matched the server: the probe URL that
+  // reproduces the feed's rows, and a signature of those rows. Set from the
+  // rows the feed itself loaded (rebaselinePoll), never from a later probe,
+  // so a change landing between a load and the next tick is still a change.
   var lastPoll = null;
 
-  // `baselineOnly === true` records the current state without acting on it
-  // (init calls this right after the first load, so a version landing within
-  // the first poll interval is still seen as a change).
-  async function pollForUpdates(baselineOnly) {
+  // The probe: the feed's own query (scope, search, sort) from offset 0, for
+  // as many rows as the feed holds. Capped at 200 rows; a change below that
+  // in a very long scrolled feed won't trigger until the next reset.
+  function probeUrl() {
+    var probeLimit = Math.min(Math.max(state.mockups.length, 1), 200);
+    var url = "/api/mockups?limit=" + probeLimit + "&sort=" + encodeURIComponent(state.sort);
+    if (state.activeProject === FAVORITES) url += "&favorites_only=true";
+    else if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
+    if (state.filterText) url += "&q=" + encodeURIComponent(state.filterText);
+    return url;
+  }
+
+  // id + updated_at + favorite: catches inserts, deletions, metadata/content
+  // edits and favorite toggles made by other clients/agents.
+  function pollSig(rows) {
+    return rows.slice(0, 200).map(function (m) {
+      return m.id + ":" + m.updated_at + ":" + (m.favorite ? 1 : 0);
+    }).join("|");
+  }
+
+  // Call whenever state.mockups changes to match the server (a load, or a
+  // local delete/unfavorite that the server already applied).
+  function rebaselinePoll() {
+    lastPoll = { url: probeUrl(), sig: pollSig(state.mockups) };
+  }
+
+  async function reloadFeed() {
+    await loadProjects();
+    await loadMockups(true);
+    updateGuideLink();
+  }
+
+  async function pollForUpdates() {
     try {
-      // Probe the current view and build a signature over id + updated_at +
-      // favorite. Comparing the whole signature (not just the newest-inserted
-      // id) means we also catch deletions, metadata/content edits, and favorite
-      // toggles made by other clients/agents — not only new inserts. Capped at
-      // 200 rows; a change to an item below that in a very long scrolled feed
-      // won't trigger until the next reset.
-      var probeLimit = Math.min(Math.max(state.mockups.length, 1), 200);
-      var url = "/api/mockups?limit=" + probeLimit + "&sort=newest";
-      if (state.activeProject === FAVORITES) url += "&favorites_only=true";
-      else if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
-      if (state.filterText) url += "&q=" + encodeURIComponent(state.filterText);
+      // No good load yet, or the last one failed: retry it. A probe alone
+      // can't recover, since a failed feed has nothing to compare against.
+      if (state.loadFailed || lastPoll === null) {
+        await reloadFeed();
+        return;
+      }
+      var url = probeUrl();
       var resp = await fetch(url);
       if (!resp.ok) return;
       var data = await resp.json();
-
-      var sig = data.map(function (m) {
-        return m.id + ":" + m.updated_at + ":" + (m.favorite ? 1 : 0);
-      }).join("|");
-
-      // A different probe URL (another scope or search, or more rows scrolled
-      // in) is a new baseline, not a change: the feed was just loaded for it.
-      // Comparing across sizes made every infinite-scroll page look like a
-      // change, and the reload threw the scrolled-in rows away.
-      if (baselineOnly === true || lastPoll === null || lastPoll.url !== url) {
-        lastPoll = { url: url, sig: sig };
-        return;
-      }
-      if (sig !== lastPoll.sig) {
-        lastPoll.sig = sig;
-        await loadProjects();
-        await loadMockups(true);
-        updateGuideLink();
-        followActiveDesign(data);
-      }
+      if (url === lastPoll.url && pollSig(data) === lastPoll.sig) return;
+      // loadMockups rebaselines when it succeeds. If it skips (a scroll load
+      // holds state.loading) the baseline stays, and the next tick retries.
+      await reloadFeed();
+      followActiveDesign(data);
     } catch (e) {
       // silently skip on network errors
     }
@@ -1399,7 +1417,6 @@
     await loadFavoritesCount();
     renderProjects();
     await loadMockups(true);
-    await pollForUpdates(true);
     updateGuideLink();
 
     var initialId = getInitialMockupId();

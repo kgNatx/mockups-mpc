@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="mockups-mpc-guide" content="shipped">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mockups MPC — Setup Guide</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -755,7 +756,7 @@ its <span class="cmd">view_url</span>, then curl it.</pre></div>
         <li><strong>Revise on purpose:</strong> upload with <code>-F parent=&lt;id&gt;</code>, or call <code>update_mockup</code> with new <code>content</code>.</li>
         <li><strong>Automatic grouping:</strong> an upload without a parent joins an existing design when exactly one design in the same project has the same base title. The base title ignores trailing draft markers, so "Pricing page draft 3" joins "Pricing page draft 2". The response then says <code>"folded": true</code> and names the design.</li>
         <li><strong>Keep it separate:</strong> send <code>-F fold=false</code> for a deliberate variant. If an upload was grouped by mistake, <code>split_version</code> (or the split button in the history list) makes it its own mockup again.</li>
-        <li><strong>Links:</strong> <code>/view/&lt;id&gt;</code> always shows the latest version. <code>/view/&lt;id&gt;/v/&lt;n&gt;</code> always shows version <em>n</em>.</li>
+        <li><strong>Links:</strong> <code>/view/&lt;id&gt;</code> shows the latest version. <code>/view/&lt;id&gt;/v/&lt;n&gt;</code> always shows version <em>n</em>. The id of a mockup that was grouped into another design keeps showing the version it became.</li>
       </ul>
     </div>
   </section>

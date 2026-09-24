@@ -93,12 +93,15 @@ async def create_design(db: aiosqlite.Connection, *, project: str, title: str,
 
 async def add_version(db: aiosqlite.Connection, mockup_id: str, *, title: str,
                       description: str | None, content_type: str, content: str,
-                      folded: bool = False, add_tags: list[str] | None = None) -> VersionRef:
+                      folded: bool = False, add_tags: list[str] | None = None,
+                      replace_tags: list[str] | None = None) -> VersionRef:
     """Append a version. The file is written first and removed if the db write fails.
 
-    `add_tags` are merged into the design's tags in the same transaction.
+    `add_tags` are merged into the design's tags, or `replace_tags` replace
+    them, in the same transaction.
     """
     file_path = None
+    number = None
     try:
         async with queries.transaction(db):
             # Read inside the transaction: the lock makes number + count race-free.
@@ -127,17 +130,30 @@ async def add_version(db: aiosqlite.Connection, mockup_id: str, *, title: str,
                 # First time past v1: the design is now named for the series. A
                 # design that ever had more versions keeps its (maybe manual) title.
                 await queries.update_design_title(db, mockup_id, base_title(existing[-1]["title"]))
-            if add_tags:
+            if replace_tags is not None:
+                await queries.update_design_fields(db, mockup_id, tags=replace_tags)
+            elif add_tags:
                 union = sorted(set(design["tags"]) | set(add_tags))
                 if union != sorted(design["tags"]):
                     await queries.update_design_fields(db, mockup_id, tags=union)
             await queries.refresh_design_mirror(db, mockup_id)
     except BaseException:
         # Outside the transaction block, so a failed COMMIT also removes the file.
-        if file_path is not None:
+        if file_path is not None and not await _version_committed(db, mockup_id, number):
             delete_mockup_file(file_path)
         raise
     return VersionRef(mockup_id=mockup_id, number=number, folded=folded)
+
+
+async def _version_committed(db: aiosqlite.Connection, mockup_id: str, number: int) -> bool:
+    """Whether the version row exists despite the error (a cancelled task whose
+    COMMIT still ran on aiosqlite's worker thread). Then the file must stay:
+    a row without its file is worse than an orphan file. Unknown counts as yes.
+    """
+    try:
+        return await queries.get_version(db, mockup_id, number) is not None
+    except Exception:
+        return True
 
 
 async def find_fold_target(db: aiosqlite.Connection, *, project_slug: str,
@@ -234,6 +250,19 @@ async def update_design(db: aiosqlite.Connection, mockup_id: str, *,
             latest = (await queries.get_versions(db, mockup_id))[0]
             await queries.update_version_description(db, mockup_id, latest["number"], description)
             await queries.refresh_design_mirror(db, mockup_id)
+
+
+async def tag_design(db: aiosqlite.Connection, mockup_id: str, *,
+                     add: list[str] | None = None, remove: list[str] | None = None) -> None:
+    """Add/remove tags as one read-modify-write under the lock."""
+    async with queries.transaction(db):
+        design = await queries.get_mockup(db, mockup_id)
+        if design is None:
+            raise NotFound(f"Mockup not found: {mockup_id}")
+        current = set(design["tags"])
+        current.update(add or [])
+        current -= set(remove or [])
+        await queries.update_design_fields(db, mockup_id, tags=sorted(current))
 
 
 async def set_version_created_at(db: aiosqlite.Connection, mockup_id: str, number: int,

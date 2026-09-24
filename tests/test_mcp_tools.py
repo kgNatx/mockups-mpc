@@ -663,3 +663,20 @@ async def test_auto_fold_unions_tags(db):
                                 tags=["legal", "mobile"])
     assert result["id"] == a["id"] and result["folded"] is True
     assert result["tags"] == ["legal", "mobile", "ui"]
+
+
+@pytest.mark.asyncio
+async def test_get_mockup_design_deleted_after_resolve_is_not_found(db, monkeypatch):
+    async def resolves_to_gone(db, id, number=None):
+        return ("gone", 1)
+    monkeypatch.setattr(versioning, "resolve", resolves_to_gone)
+    with pytest.raises(versioning.NotFound):
+        await _get_mockup(db=db, id="some-alias")
+
+
+@pytest.mark.asyncio
+async def test_update_with_content_replaces_tags_in_one_write(db):
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=["old"])
+    result = await _update_mockup(db=db, id=a["id"], content="<p>2</p>", tags=["new"])
+    assert result["tags"] == ["new"] and result["version"] == 2

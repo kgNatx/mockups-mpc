@@ -47,15 +47,21 @@ def write_mockup_file(project_slug: str, mockup_id: str, content_type: str, cont
     if len(data) > MAX_CONTENT_SIZE:
         raise ValueError(f"Content too large: {len(data)} bytes (max {MAX_CONTENT_SIZE})")
     full_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(full_path, "xb" if exclusive else "wb") as f:
+    f = open(full_path, "xb" if exclusive else "wb")
+    try:
+        f.write(data)
+        # Inside the try: a small write sits in the buffer until close(), so
+        # ENOSPC/EIO can surface here rather than in write().
+        f.close()
+    except BaseException:
+        # Never leave a truncated file behind. Only after open() succeeded:
+        # an exclusive open that raised FileExistsError names someone else's file.
         try:
-            f.write(data)
-        except BaseException:
-            # Never leave a truncated file behind. Only after open() succeeded:
-            # an exclusive open that raised FileExistsError names someone else's file.
             f.close()
-            full_path.unlink(missing_ok=True)
-            raise
+        except OSError:
+            pass
+        full_path.unlink(missing_ok=True)
+        raise
 
     return rel_path
 
