@@ -63,7 +63,9 @@ def _build_send_response(design: dict, ref: versioning.VersionRef) -> dict:
     if ref.folded:
         result["note"] = (
             f"Added as version {ref.number} of '{design['title']}'. "
-            "Resend with fold=false if this was meant to be a separate mockup."
+            "If this was meant to be a separate mockup, split it out with "
+            f"split_version({design['id']}, {ref.number}) or "
+            f"POST /api/mockups/{design['id']}/versions/{ref.number}/split."
         )
     return result
 
@@ -178,7 +180,8 @@ async def _update_mockup(*, db: aiosqlite.Connection, id: str,
             await db_update_mockup(db, mockup_id, tags=tags)
     else:
         # Metadata-only: still renames the design.
-        await db_update_mockup(db, mockup_id, title=title, description=description, tags=tags)
+        await versioning.update_design(
+            db, mockup_id, title=title, description=description, tags=tags)
     return await _get_mockup(db=db, id=mockup_id)
 
 

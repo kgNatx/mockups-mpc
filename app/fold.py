@@ -48,10 +48,7 @@ async def plan_folds(db: aiosqlite.Connection) -> list[FoldGroup]:
     displayed base title is the oldest member's base_title (not necessarily
     its full original title).
     """
-    cursor = await db.execute(
-        "SELECT id, project_slug, title, created_at FROM mockups "
-        "WHERE version_count = 1 ORDER BY created_at ASC")
-    rows = [dict(row) for row in await cursor.fetchall()]
+    rows = await queries.list_single_version_designs(db)
 
     buckets: dict[tuple[str, str], list[dict]] = {}
     for row in rows:
@@ -112,7 +109,8 @@ async def apply_fold(db: aiosqlite.Connection, group: FoldGroup) -> None:
             number = await queries.next_version_number(db, survivor.id)
             await queries.move_version(
                 db, member.id, source_number, to_mockup_id=survivor.id, to_number=number)
-            await queries.insert_alias(db, alias_id=member.id, mockup_id=survivor.id, number=number)
+            await queries.insert_alias(db, alias_id=member.id, mockup_id=survivor.id,
+                                       number=number, source_number=source_number)
             await queries.delete_design_row(db, member.id)
 
         await queries.update_design_fields(

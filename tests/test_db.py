@@ -313,3 +313,32 @@ async def test_migration_from_v14_is_idempotent(tmp_data_dir):
         assert (await cursor.fetchone())["n"] == 0
     finally:
         await db.close()
+
+
+# mockup_aliases as the 1.5.0 branch first created it, before source_number.
+ALIASES_WITHOUT_SOURCE_NUMBER = """
+CREATE TABLE mockup_aliases (
+    alias_id TEXT PRIMARY KEY,
+    mockup_id TEXT NOT NULL REFERENCES mockups(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL
+);
+"""
+
+
+@pytest.mark.asyncio
+async def test_migration_adds_alias_source_number_idempotently(tmp_data_dir):
+    legacy = await aiosqlite.connect(str(config.DB_PATH))
+    await legacy.executescript(V14_DDL + ALIASES_WITHOUT_SOURCE_NUMBER)
+    await legacy.commit()
+    await legacy.close()
+
+    for _ in range(2):
+        db = await init_db()
+        await db.close()
+    db = await init_db()
+    try:
+        cursor = await db.execute("PRAGMA table_info(mockup_aliases)")
+        cols = {row["name"] for row in await cursor.fetchall()}
+        assert "source_number" in cols
+    finally:
+        await db.close()

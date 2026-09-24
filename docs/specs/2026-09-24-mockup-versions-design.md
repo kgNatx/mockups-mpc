@@ -134,7 +134,7 @@ Comparison key = `base_title(t).casefold()` with whitespace collapsed.
 
 **Strips** (as a trailing token, with any preceding ` — `, ` – `, ` - `, `:` or `,`):
 `v2`, `V3`, `v2.1`, `draft 4`, `rev 2`, `r5`, `iteration 3`, `iter 3`, `round 2`, `take 2`,
-a number with an optional letter (`3`, `3b`), and one trailing parenthetical (`(rail fixed)`).
+a number with an optional letter (`3`, `3b`), and trailing parentheticals (`(rail fixed)`), repeatedly.
 Repeats until nothing strips ("draft 3b (rail fixed)" → base).
 
 **Keeps** (variant markers — never stripped): `option B`, `variant C`, `alt 2`, and a standalone
@@ -167,8 +167,8 @@ Automatic fold (no `parent`, `fold` not false): if **exactly one** design in the
 has the same comparison key, add a version to it. Zero or ≥ 2 matches → new design.
 
 Response adds: `version` (int), `version_url` (`{BASE_URL}/view/{id}/v/{n}`), `folded` (bool), and when
-`folded` is true a `note`: `"Added as version {n} of '{design title}'. Resend with fold=false if this
-was meant to be a separate mockup."` `id`, `view_url`, `gallery_url` keep their meaning (the design).
+`folded` is true a `note`: `"Added as version {n} of '{design title}'. If this was meant to be a
+separate mockup, split it out with split_version(id, {n}) or POST /api/mockups/{id}/versions/{n}/split."` `id`, `view_url`, `gallery_url` keep their meaning (the design).
 
 ### 6.2 MCP tools
 

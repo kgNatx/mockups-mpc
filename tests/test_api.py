@@ -339,7 +339,8 @@ async def test_upload_auto_folds_on_single_match(client):
     assert body["folded"] is True
     assert body["note"] == (
         "Added as version 2 of 'Privacy page'. "
-        "Resend with fold=false if this was meant to be a separate mockup."
+        "If this was meant to be a separate mockup, split it out with split_version("
+        f"{parent_id}, 2) or POST /api/mockups/{parent_id}/versions/2/split."
     )
 
 

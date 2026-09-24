@@ -27,11 +27,12 @@ _VARIANT_WORD = re.compile(r"\b(?:option|variant|alt)$", re.IGNORECASE)
 def base_title(title: str) -> str:
     """Strip trailing iteration markers ("draft 3b (rail fixed)") from a title.
 
-    Repeats until nothing strips. Never returns an empty string: if stripping
-    would consume everything, the original title is returned.
+    Repeats until nothing strips, with no other state, so the result is a
+    fixpoint: base_title(base_title(t)) == base_title(t). A design titled
+    base_title(v1) therefore keeps v1's comparison key. Never returns an empty
+    string: if stripping would consume everything, the original title is returned.
     """
     current = title.strip()
-    paren_stripped = False
     while True:
         m = _TRAILING_TOKEN.match(current)
         if m and m.group("rest").strip() and not (
@@ -39,12 +40,10 @@ def base_title(title: str) -> str:
         ):
             current = m.group("rest").rstrip()
             continue
-        if not paren_stripped:
-            m = _TRAILING_PAREN.match(current)
-            if m and m.group("rest").strip():
-                current = m.group("rest").rstrip()
-                paren_stripped = True
-                continue
+        m = _TRAILING_PAREN.match(current)
+        if m and m.group("rest").strip():
+            current = m.group("rest").rstrip()
+            continue
         break
     return current or title
 
@@ -192,13 +191,34 @@ async def delete_design(db: aiosqlite.Connection, mockup_id: str) -> None:
     await queries.delete_mockup(db, mockup_id)
 
 
+async def update_design(db: aiosqlite.Connection, mockup_id: str, *,
+                        title: str | None = None, description=queries.UNSET,
+                        tags: list[str] | None = None) -> None:
+    """Metadata-only edit of a design (no new version).
+
+    The design's description mirrors its latest version, so a description edit
+    is written to that version too; otherwise the next mirror refresh would
+    revert it. The title and tags live on the design only.
+    """
+    if title is None and description is queries.UNSET and tags is None:
+        return
+    async with queries.transaction(db):
+        if await queries.get_mockup(db, mockup_id) is None:
+            raise ValueError(f"Mockup not found: {mockup_id}")
+        await queries.update_design_fields(db, mockup_id, title=title, tags=tags)
+        if description is not queries.UNSET:
+            latest = (await queries.get_versions(db, mockup_id))[0]
+            await queries.update_version_description(db, mockup_id, latest["number"], description)
+            await queries.refresh_design_mirror(db, mockup_id)
+
+
 async def set_version_created_at(db: aiosqlite.Connection, mockup_id: str, number: int,
                                  created_at: str) -> None:
     """Backdate/forward-date one version.
 
     `mockups.created_at` means "the design's first version's time", so touching
-    the design's lowest-numbered version moves it too; touching any other
-    version leaves it alone.
+    the design's lowest-numbered version moves it too (via the mirror refresh);
+    touching any other version leaves it alone.
     """
     async with queries.transaction(db):
         design = await queries.get_mockup(db, mockup_id)
@@ -209,8 +229,6 @@ async def set_version_created_at(db: aiosqlite.Connection, mockup_id: str, numbe
         if number not in numbers:
             raise ValueError(f"Version not found: {mockup_id} v{number}")
         await queries.update_version_created_at(db, mockup_id, number, created_at)
-        if number == min(numbers):
-            await queries.update_design_created_at(db, mockup_id, created_at)
         await queries.refresh_design_mirror(db, mockup_id)
 
 
@@ -219,9 +237,11 @@ async def resolve(db: aiosqlite.Connection, id: str,
     """Map a design or alias id (plus optional version) to (design id, version number).
 
     An alias is pinned to one version. An explicit `number` must match that
-    pinned version or resolution fails (returns None) — `/v/{n}` names a fixed
-    file, so an alias id combined with a mismatched `number` must not silently
-    fall back to whatever the alias happens to point at.
+    pinned version, or the alias's source_number (the number it had as a design
+    before a fold, so `/view/{alias}/v/{n}` links minted then keep working), or
+    resolution fails (returns None) — `/v/{n}` names a fixed file, so an alias
+    id combined with any other `number` must not silently fall back to whatever
+    the alias happens to point at.
     """
     if await queries.get_mockup(db, id) is not None:
         if number is None:
@@ -231,7 +251,7 @@ async def resolve(db: aiosqlite.Connection, id: str,
     alias = await queries.get_alias(db, id)
     if alias is None:
         return None
-    if number is not None and number != alias["number"]:
+    if number is not None and number not in (alias["number"], alias["source_number"]):
         return None
     if await queries.get_version(db, alias["mockup_id"], alias["number"]) is None:
         return None

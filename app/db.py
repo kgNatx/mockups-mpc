@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS mockup_versions (
 CREATE TABLE IF NOT EXISTS mockup_aliases (
     alias_id TEXT PRIMARY KEY,
     mockup_id TEXT NOT NULL REFERENCES mockups(id) ON DELETE CASCADE,
-    number INTEGER NOT NULL
+    number INTEGER NOT NULL,
+    source_number INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_mockup_aliases_target ON mockup_aliases(mockup_id, number);
 """
@@ -81,7 +82,11 @@ async def _migrate_versions(db: aiosqlite.Connection) -> None:
     await db.executescript(CREATE_VERSION_TABLES)
     cursor = await db.execute("PRAGMA table_info(mockups)")
     cols = {row["name"] for row in await cursor.fetchall()}
+    cursor = await db.execute("PRAGMA table_info(mockup_aliases)")
+    alias_cols = {row["name"] for row in await cursor.fetchall()}
     async with transaction(db):
+        if "source_number" not in alias_cols:
+            await db.execute("ALTER TABLE mockup_aliases ADD COLUMN source_number INTEGER")
         # SQLite needs a DEFAULT to add a NOT NULL column; the backfill below
         # replaces the '' placeholder.
         if "latest_at" not in cols:
@@ -225,18 +230,26 @@ async def update_version_created_at(db: aiosqlite.Connection, mockup_id: str, nu
         (_ts(created_at), mockup_id, number))
 
 
-async def update_design_created_at(db: aiosqlite.Connection, mockup_id: str,
-                                   created_at: datetime | str) -> None:
-    await db.execute("UPDATE mockups SET created_at = ? WHERE id = ?",
-                     (_ts(created_at), mockup_id))
+async def update_version_description(db: aiosqlite.Connection, mockup_id: str, number: int,
+                                     description: str | None) -> None:
+    await db.execute(
+        "UPDATE mockup_versions SET description = ? WHERE mockup_id = ? AND number = ?",
+        (description, mockup_id, number))
 
 
 async def refresh_design_mirror(db: aiosqlite.Connection, mockup_id: str) -> None:
-    """Copy the highest-numbered version onto the design row; recount versions."""
+    """Copy the highest-numbered version onto the design row; recount versions.
+
+    created_at comes from the lowest-numbered version: it means "the design's
+    first version's time", which moves when v1 is split out or deleted.
+    """
     latest = """(SELECT {col} FROM mockup_versions v WHERE v.mockup_id = mockups.id
                  ORDER BY number DESC LIMIT 1)"""
+    first_created_at = """(SELECT created_at FROM mockup_versions v WHERE v.mockup_id = mockups.id
+                           ORDER BY number ASC LIMIT 1)"""
     await db.execute(
         f"""UPDATE mockups SET
+               created_at = {first_created_at},
                description = {latest.format(col="description")},
                content_type = {latest.format(col="content_type")},
                file_path = {latest.format(col="file_path")},
@@ -259,7 +272,10 @@ async def delete_version_row(db: aiosqlite.Connection, mockup_id: str, number: i
 
 async def move_version(db: aiosqlite.Connection, mockup_id: str, number: int, *,
                        to_mockup_id: str, to_number: int) -> None:
-    """Re-parent a version row, and re-point aliases pinned to it."""
+    """Re-parent a version row, and re-point aliases pinned to it.
+
+    An alias keeps its source_number, so a link minted before the move still resolves.
+    """
     await db.execute(
         "UPDATE mockup_versions SET mockup_id = ?, number = ? WHERE mockup_id = ? AND number = ?",
         (to_mockup_id, to_number, mockup_id, number))
@@ -272,10 +288,12 @@ async def move_version(db: aiosqlite.Connection, mockup_id: str, number: int, *,
 
 
 async def insert_alias(db: aiosqlite.Connection, *, alias_id: str, mockup_id: str,
-                       number: int) -> None:
+                       number: int, source_number: int | None = None) -> None:
+    """`source_number` is the version number the alias id had as a design (fold)."""
     await db.execute(
-        "INSERT INTO mockup_aliases (alias_id, mockup_id, number) VALUES (?, ?, ?)",
-        (alias_id, mockup_id, number))
+        "INSERT INTO mockup_aliases (alias_id, mockup_id, number, source_number) "
+        "VALUES (?, ?, ?, ?)",
+        (alias_id, mockup_id, number, source_number))
 
 
 async def delete_alias(db: aiosqlite.Connection, alias_id: str) -> None:
@@ -322,6 +340,14 @@ async def list_aliases_for_version(db: aiosqlite.Connection, mockup_id: str,
         "SELECT alias_id FROM mockup_aliases WHERE mockup_id = ? AND number = ? ORDER BY alias_id",
         (mockup_id, number))
     return [row["alias_id"] for row in await cursor.fetchall()]
+
+
+async def list_single_version_designs(db: aiosqlite.Connection) -> list[dict]:
+    """Designs with exactly one version, oldest first (the fold command's candidates)."""
+    cursor = await db.execute(
+        "SELECT id, project_slug, title, created_at FROM mockups "
+        "WHERE version_count = 1 ORDER BY created_at ASC")
+    return [dict(row) for row in await cursor.fetchall()]
 
 
 async def list_design_titles(db: aiosqlite.Connection, project_slug: str) -> list[dict]:

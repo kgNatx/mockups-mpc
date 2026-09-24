@@ -26,6 +26,27 @@ def test_base_title_table(title, base):
     assert base_title(title) == base
 
 
+_IDEMPOTENCE_TITLES = [
+    "Privacy page — draft 3b (rail fixed)", "Privacy page — draft 8", "Entangram hero v7",
+    "Strata landing — r5", "Hero — option B", "Hero — option C", "Layout A",
+    "Scan signature chart (v2)", "Foo (a) (b)", "Foo (a) v2 (b)", "Hero (mobile) (v2)",
+]
+
+
+@pytest.mark.parametrize("title", _IDEMPOTENCE_TITLES)
+def test_base_title_is_idempotent(title):
+    # Regression (M3): a design titled base_title(v1) must share v1's comparison key.
+    assert base_title(base_title(title)) == base_title(title)
+
+
+def test_base_title_strips_every_trailing_parenthetical():
+    assert base_title("Foo (a) (b)") == "Foo"
+    assert base_title("Foo (a) v2 (b)") == "Foo"
+    assert base_title("Hero (mobile) (v2)") == "Hero"
+    assert base_title("(a) (b)") == "(a)"
+    assert base_title("(a)") == "(a)"  # never strip to empty
+
+
 def test_base_title_edge_cases():
     assert comparison_key("Hero — option B") != comparison_key("Hero — option C")
     assert comparison_key("Privacy page — draft 1") == comparison_key("privacy  page – Draft 8")
@@ -330,3 +351,26 @@ async def test_split_design_rederives_title_on_first_v2(db):
     assert (await get_mockup(db, new_id))["title"] == "Hero — draft 2"
     await _add(db, new_id, "Hero — draft 5")
     assert (await get_mockup(db, new_id))["title"] == "Hero"
+
+
+async def test_split_v1_moves_design_created_at_to_new_first_version(db):
+    # Regression (M1): created_at is the first remaining version's time.
+    mid = await _design(db)
+    await versioning.set_version_created_at(db, mid, 1, "2026-01-01T00:00:00+00:00")
+    await _add(db, mid, "Privacy page — draft 2")
+    await _add(db, mid, "Privacy page — draft 3")
+    v2 = await get_version(db, mid, 2)
+
+    new_id = await versioning.split_version(db, mid, 1)
+    assert (await get_mockup(db, mid))["created_at"] == v2["created_at"]
+    assert (await get_mockup(db, new_id))["created_at"] == "2026-01-01T00:00:00+00:00"
+
+
+async def test_delete_v1_moves_design_created_at_to_new_first_version(db):
+    mid = await _design(db)
+    await versioning.set_version_created_at(db, mid, 1, "2026-01-01T00:00:00+00:00")
+    await _add(db, mid, "Privacy page — draft 2")
+    v2 = await get_version(db, mid, 2)
+
+    await versioning.delete_version(db, mid, 1)
+    assert (await get_mockup(db, mid))["created_at"] == v2["created_at"]

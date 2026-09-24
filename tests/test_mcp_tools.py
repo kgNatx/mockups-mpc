@@ -299,7 +299,8 @@ async def test_send_mockup_auto_folds_on_single_match(db):
     assert result["folded"] is True
     assert result["note"] == (
         "Added as version 2 of 'Privacy page'. "
-        "Resend with fold=false if this was meant to be a separate mockup."
+        "If this was meant to be a separate mockup, split it out with split_version("
+        f"{a['id']}, 2) or POST /api/mockups/{a['id']}/versions/2/split."
     )
 
 
@@ -532,3 +533,46 @@ async def test_set_created_at_on_non_lowest_version_leaves_design_created_at(db)
     after = await _get_mockup(db=db, id=sent["id"])
     assert after["created_at"] == before["created_at"]  # v2 is not the design's lowest version
     assert after["latest_at"] == "2050-06-01T00:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_description_survives_mirror_refresh(db):
+    # Regression (I2): a metadata-only description edit is also written to the
+    # latest version, so the next mirror refresh (here: set_created_at) keeps it.
+    sent = await _send_mockup(db=db, project="P", title="Hero v1", description="d1",
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _send_mockup(db=db, project="P", title="Hero v2", description="d2",
+                       content="<p>2</p>", content_type="html", tags=[], parent=sent["id"])
+    edited = await _update_mockup(db=db, id=sent["id"], description="hand-edited")
+    assert edited["description"] == "hand-edited"
+
+    result = await _set_created_at(db=db, id=sent["id"], version=1,
+                                   created_at="2026-01-01T00:00:00+00:00")
+    assert result["description"] == "hand-edited"
+    v1 = await _get_mockup(db=db, id=sent["id"], version=1)
+    assert v1["description"] == "hand-edited"  # design-level field, mirrored
+    from app.db import get_version
+    assert (await get_version(db, sent["id"], 2))["description"] == "hand-edited"
+    assert (await get_version(db, sent["id"], 1))["description"] == "d1"
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_without_changes_is_a_no_op(db):
+    sent = await _send_mockup(db=db, project="P", title="T", description="d",
+                              content="<p>1</p>", content_type="html", tags=[])
+    result = await _update_mockup(db=db, id=sent["id"])
+    assert result["updated_at"] == sent["updated_at"]
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_auto_folds_series_with_two_parentheticals(db):
+    # Regression (M3): the design title base_title("Foo (a) (b) v1") must keep
+    # matching the series, so v3 folds in like v2 did.
+    a = await _send_mockup(db=db, project="P", title="Foo (a) (b) v1", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    v2 = await _send_mockup(db=db, project="P", title="Foo (a) (b) v2", description=None,
+                            content="<p>2</p>", content_type="html", tags=[])
+    assert (v2["id"], v2["folded"]) == (a["id"], True)
+    v3 = await _send_mockup(db=db, project="P", title="Foo (a) (b) v3", description=None,
+                            content="<p>3</p>", content_type="html", tags=[])
+    assert (v3["id"], v3["version"], v3["folded"]) == (a["id"], 3, True)

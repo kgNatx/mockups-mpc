@@ -160,11 +160,12 @@ async def test_apply_fold_failure_rolls_back_whole_group(db, tmp_data_dir, monke
     real_insert_alias = dbm.insert_alias
     calls = {"n": 0}
 
-    async def _flaky_insert_alias(conn, *, alias_id, mockup_id, number):
+    async def _flaky_insert_alias(conn, *, alias_id, mockup_id, number, source_number=None):
         calls["n"] += 1
         if calls["n"] == 2:  # b's alias already inserted; fail on c's, after c's move_version ran
             raise RuntimeError("simulated failure mid-group")
-        await real_insert_alias(conn, alias_id=alias_id, mockup_id=mockup_id, number=number)
+        await real_insert_alias(conn, alias_id=alias_id, mockup_id=mockup_id, number=number,
+                                source_number=source_number)
 
     monkeypatch.setattr(dbm, "insert_alias", _flaky_insert_alias)
 
@@ -411,3 +412,72 @@ def test_cli_data_dir_targets_a_different_directory(tmp_data_dir, tmp_path, caps
     assert '"Screen" · 2 mockups' in out
     assert config.DATA_DIR == scratch
     assert config.DB_PATH == scratch / "mockups.db"
+
+
+# --- a version link minted before a fold keeps working after it (I3 / R23) ---
+
+@pytest.mark.asyncio
+async def test_version_url_minted_before_fold_keeps_working(client):
+    resp_a = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>a1</p>", "text/html")},
+        data={"project": "Proj", "title": "Screen 1", "fold": "false"},
+    )
+    a = resp_a.json()["id"]
+    resp_b = await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>b1</p>", "text/html")},
+        data={"project": "Proj", "title": "Screen 2", "fold": "false"},
+    )
+    b = resp_b.json()["id"]
+    resp_c = await client.post(
+        "/api/upload",
+        files={"file": ("c.html", b"<p>c1</p>", "text/html")},
+        data={"project": "Proj", "title": "Screen 3", "fold": "false"},
+    )
+    c = resp_c.json()["id"]
+    minted = resp_c.json()["version_url"]
+    assert minted.endswith(f"/view/{c}/v/1")
+
+    db = await init_db()
+    await _backdate(db, a, "2026-01-01T00:00:00+00:00")
+    await _backdate(db, b, "2026-01-02T00:00:00+00:00")
+    await _backdate(db, c, "2026-01-03T00:00:00+00:00")
+    [group] = await plan_folds(db)
+    await apply_fold(db, group)
+    alias = await get_alias(db, c)
+    await db.close()
+    assert (alias["mockup_id"], alias["number"], alias["source_number"]) == (a, 3, 1)
+
+    resp = await client.get(f"/view/{c}/v/1")  # the link minted before the fold
+    assert resp.status_code == 200
+    assert resp.text == "<p>c1</p>"
+    resp = await client.get(f"/view/{c}/v/3")  # the pinned number on the survivor
+    assert resp.status_code == 200
+    assert resp.text == "<p>c1</p>"
+    assert (await client.get(f"/view/{c}/v/99")).status_code == 404
+    assert (await client.get(f"/view/{c}/v/2")).status_code == 404
+
+
+async def test_move_version_keeps_alias_source_number(db):
+    a = await _design(db, "Screen 1")
+    b = await _design(db, "Screen 2")
+    c = await _design(db, "Screen 3")
+    await _backdate(db, a, "2026-01-01T00:00:00+00:00")
+    await _backdate(db, b, "2026-01-02T00:00:00+00:00")
+    await _backdate(db, c, "2026-01-03T00:00:00+00:00")
+    [group] = await plan_folds(db)
+    await apply_fold(db, group)
+    # Split v2 back out: b's alias becomes a design again; c's alias is untouched.
+    await versioning.split_version(db, a, 2)
+    assert await versioning.resolve(db, c, 1) == (a, 3)
+    # Re-point c's version onto b: the alias follows and keeps its source number.
+    async with dbm.transaction(db):
+        await dbm.move_version(db, a, 3, to_mockup_id=b, to_number=2)
+        await dbm.refresh_design_mirror(db, a)
+        await dbm.refresh_design_mirror(db, b)
+    alias = await get_alias(db, c)
+    assert (alias["mockup_id"], alias["number"], alias["source_number"]) == (b, 2, 1)
+    assert await versioning.resolve(db, c, 1) == (b, 2)
+    assert await versioning.resolve(db, c, 2) == (b, 2)
+    assert await versioning.resolve(db, c, 3) is None
