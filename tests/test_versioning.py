@@ -281,3 +281,48 @@ async def test_list_sorts_by_latest_activity_and_searches_versions(db):
 
     await _add(db, old, "Something else")
     assert [r["id"] for r in await list_mockups(db, q="draft 3b")] == [old]
+
+
+async def test_split_restored_alias_never_overwrites_files(db, tmp_data_dir):
+    # X keeps only v2 (p/X/v2.html), is folded into Y, then split back out as X
+    # with that file as its v1. X's next version must not land on p/X/v2.html.
+    x = await _design(db, title="X", content="<p>x1</p>")
+    await _add(db, x, "X 2", content="<p>x2-original</p>")
+    await versioning.delete_version(db, x, 1)
+    y = await _design(db, title="Y", content="<p>y1</p>")
+    async with dbm.transaction(db):  # simulate a chunk-3 fold of X into Y
+        n = await dbm.next_version_number(db, y)
+        await dbm.move_version(db, x, 2, to_mockup_id=y, to_number=n)
+        await db.execute("DELETE FROM mockups WHERE id = ?", (x,))
+        await dbm.insert_alias(db, alias_id=x, mockup_id=y, number=n)
+        await dbm.refresh_design_mirror(db, y)
+    assert await versioning.split_version(db, y, n) == x
+    v1 = await get_version(db, x, 1)
+    assert v1["file_path"] == f"proj/{x}/v2.html"
+
+    ref = await _add(db, x, "X again", content="<p>NEW</p>")
+    new = await get_version(db, x, ref.number)
+    assert new["file_path"] != v1["file_path"]
+    assert (tmp_data_dir / new["file_path"]).read_text() == "<p>NEW</p>"
+    assert (tmp_data_dir / v1["file_path"]).read_text() == "<p>x2-original</p>"
+
+    await versioning.delete_version(db, x, ref.number)
+    assert (tmp_data_dir / v1["file_path"]).read_text() == "<p>x2-original</p>"
+
+
+async def test_manual_title_survives_drop_back_to_one_version(db):
+    mid = await _design(db)
+    await _add(db, mid, "Privacy page — draft 2")
+    await update_mockup(db, mid, title="My manual name")
+    await versioning.delete_version(db, mid, 1)
+    await _add(db, mid, "Privacy page — draft 3")
+    assert (await get_mockup(db, mid))["title"] == "My manual name"
+
+
+async def test_split_design_rederives_title_on_first_v2(db):
+    mid = await _design(db)
+    await _add(db, mid, "Hero — draft 2")
+    new_id = await versioning.split_version(db, mid, 2)
+    assert (await get_mockup(db, new_id))["title"] == "Hero — draft 2"
+    await _add(db, new_id, "Hero — draft 5")
+    assert (await get_mockup(db, new_id))["title"] == "Hero"

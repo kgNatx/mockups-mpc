@@ -90,18 +90,28 @@ async def add_version(db: aiosqlite.Connection, mockup_id: str, *, title: str,
         if design is None:
             raise ValueError(f"Mockup not found: {mockup_id}")
         number = await queries.next_version_number(db, mockup_id)
-        file_path = write_mockup_file(
-            design["project_slug"], mockup_id, content_type, content,
-            rel_path=version_rel_path(design["project_slug"], mockup_id, number, content_type))
+        while True:
+            # Exclusive create: a path can already be taken by a version that
+            # moved here with a reused alias id (split). Skip to the next number.
+            try:
+                file_path = write_mockup_file(
+                    design["project_slug"], mockup_id, content_type, content,
+                    rel_path=version_rel_path(design["project_slug"], mockup_id, number,
+                                              content_type),
+                    exclusive=True)
+                break
+            except FileExistsError:
+                number += 1
         try:
             existing = await queries.get_versions(db, mockup_id)
             await queries.insert_version(
                 db, mockup_id=mockup_id, number=number, title=title, description=description,
                 content_type=content_type, file_path=file_path,
                 created_at=datetime.now(timezone.utc))
-            if len(existing) == 1:
-                # Gaining a second version: the design is now named for the series.
-                await queries.update_design_title(db, mockup_id, base_title(existing[0]["title"]))
+            if design["last_version_number"] == 1:
+                # First time past v1: the design is now named for the series. A
+                # design that ever had more versions keeps its (maybe manual) title.
+                await queries.update_design_title(db, mockup_id, base_title(existing[-1]["title"]))
             await queries.refresh_design_mirror(db, mockup_id)
         except BaseException:
             delete_mockup_file(file_path)

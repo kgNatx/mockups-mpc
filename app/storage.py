@@ -27,8 +27,11 @@ def version_rel_path(project_slug: str, mockup_id: str, number: int, content_typ
 
 
 def write_mockup_file(project_slug: str, mockup_id: str, content_type: str, content: str,
-                      *, rel_path: str | None = None) -> str:
-    """Write content to rel_path, or to the v1 layout `{slug}/{id}.{ext}` when omitted."""
+                      *, rel_path: str | None = None, exclusive: bool = False) -> str:
+    """Write content to rel_path, or to the v1 layout `{slug}/{id}.{ext}` when omitted.
+
+    With exclusive=True an existing file is never overwritten: FileExistsError instead.
+    """
     if content_type not in VALID_TYPES:
         raise ValueError(f"Invalid content_type: {content_type!r}")
 
@@ -44,7 +47,8 @@ def write_mockup_file(project_slug: str, mockup_id: str, content_type: str, cont
     if len(data) > MAX_CONTENT_SIZE:
         raise ValueError(f"Content too large: {len(data)} bytes (max {MAX_CONTENT_SIZE})")
     full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(data)
+    with open(full_path, "xb" if exclusive else "wb") as f:
+        f.write(data)
 
     return rel_path
 
