@@ -539,7 +539,17 @@ body {
 .feed-item:focus-visible,
 .scope-item:focus-visible,
 .feed-action-btn:focus-visible,
-.sort-opt:focus-visible {
+.sort-opt:focus-visible,
+.ver-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* R19b: real <button>/<a> elements that otherwise fall back to the browser's
+   default focus ring, inconsistent with the rest of the app's cyan rings. */
+.scope-btn:focus-visible,
+.fav-toggle:focus-visible,
+.brand-guide-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -618,6 +628,159 @@ body {
   font-size: 9px;
   font-weight: 300;
   color: var(--text-ghost);
+}
+
+/* ============================================================
+   VERSION CHIP + HISTORY LIST (feed rows)
+   ============================================================ */
+/* "N versions" chip — only rendered when a design has 2+ versions. Toggles
+   the .ver-list below the row without changing the selection. */
+.ver-chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--accent-dim);
+  background: transparent;
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.ver-chip:hover,
+.ver-chip.open {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: var(--accent-glow);
+}
+
+/* The row's version history, inserted as a sibling right after .feed-item
+   the first time its chip is opened (see toggleVersionList in gallery.html). */
+.ver-list {
+  margin: 2px 0 4px 16px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.ver-list-loading {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost);
+  padding: 6px 8px;
+}
+
+.ver-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 0.12s ease;
+}
+
+.ver-row:hover {
+  background: var(--bg-hover);
+}
+
+.ver-row.active {
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.ver-row-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost);
+  width: 22px;
+  flex-shrink: 0;
+}
+
+.ver-row.active .ver-row-num {
+  color: var(--accent-dim);
+}
+
+.ver-row-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ver-row-latest {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--type-svg);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: 3px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.ver-row-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-ghost);
+  flex-shrink: 0;
+}
+
+/* Split: hidden until the row is hovered/focused, always visible on touch
+   (no hover to reveal it there), matching .feed-action-btn's convention. */
+.ver-split {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-ghost);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.ver-row:hover .ver-split,
+.ver-row:focus-within .ver-split,
+.ver-split:focus-visible {
+  display: flex;
+}
+
+.ver-split:hover {
+  color: var(--accent);
+  background: var(--bg-active);
+}
+
+.ver-split:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.ver-split.failed {
+  color: var(--type-jpg);
+}
+
+.ver-split svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (hover: none) {
+  .ver-split { display: flex; }
 }
 
 /* Feed loading / empty states */
@@ -1171,6 +1334,23 @@ body {
 }
 .meta-bar .meta-star:hover { color: var(--star); transform: scale(1.15); }
 .meta-bar .meta-star.starred { color: var(--star); }
+
+/* Version pill after the title — only rendered when a design has 2+ versions.
+   Cyan on the latest, amber ("old") when pinned to an earlier version. */
+.ver-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  border-radius: 3px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.ver-pill.old {
+  color: var(--star);
+  border-color: rgba(251, 191, 36, 0.35);
+}
 
 /* Constrain the iframe width for viewport preview */
 .viewer.vp-mobile .viewer-iframe  { width: 375px; }

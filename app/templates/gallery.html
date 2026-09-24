@@ -111,6 +111,7 @@
     mockups: [],
     activeProject: null,   // null = all, FAVORITES = favorites filter, else a project slug
     activeMockupId: null,
+    activeVersion: null,   // number = pinned to that version, null = follow latest
     filterText: "",
     sort: "newest",
     favoritesCount: 0,
@@ -120,6 +121,19 @@
     exhausted: false,
     scopeFilterText: ""
   };
+
+  // The full mockup detail (design + versions) behind the current viewer/meta
+  // bar render, when known — kept so a re-render triggered by something that
+  // only has a feed-row summary (e.g. a favorite toggle) never has to drop
+  // down to a shallower object and lose the versions list.
+  var activeMockupDetail = null;
+
+  // Version lists fetched per design id (`/api/mockups/{id}`), for the feed
+  // row's version chip. Cleared on every feed reload (not on infinite-scroll
+  // append), per the task brief.
+  var versionsCache = {};
+
+  var SPLIT_SVG = '<svg viewBox="0 0 24 24"><path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6M6 21v-4"/><path d="M15 18l3 3 3-3"/></svg>';
 
   /* ── DOM refs ── */
   var scopeBtn        = document.getElementById("scope-btn");
@@ -322,7 +336,7 @@
       var item = el("li", "scope-item" + (state.activeProject === c.slug ? " active" : ""));
       var activate = function () {
         selectProject(c.slug);
-        closeScopePop();
+        closeAllPopovers();
       };
       item.addEventListener("click", activate);
       makeActivatable(item, activate);
@@ -342,15 +356,24 @@
     });
   }
 
-  function closeScopePop() {
+  // Closes every popover in the app: the scope picker and any open viewer-bar
+  // menu (viewport, details). R19a: this replaces two independent close
+  // systems (closeScopePop + closeMenus) with one, so opening any one of the
+  // three popovers always closes the others, and Escape / outside click /
+  // window blur close all of them together.
+  function closeAllPopovers() {
     scopePop.classList.remove("open");
     scopeBtn.setAttribute("aria-expanded", "false");
+    metaBar.querySelectorAll(".meta-pop.open").forEach(function (p) { p.classList.remove("open"); });
+    metaBar.querySelectorAll('[aria-haspopup][aria-expanded="true"]').forEach(function (b) {
+      b.setAttribute("aria-expanded", "false");
+    });
   }
 
   scopeBtn.addEventListener("click", function (e) {
     e.stopPropagation();
     var wasOpen = scopePop.classList.contains("open");
-    closeScopePop();
+    closeAllPopovers();
     if (!wasOpen) {
       scopePop.classList.add("open");
       scopeBtn.setAttribute("aria-expanded", "true");
@@ -368,11 +391,13 @@
   favToggle.addEventListener("click", function () {
     selectProject(state.activeProject === FAVORITES ? null : FAVORITES);
   });
-  document.addEventListener("click", closeScopePop);
+  document.addEventListener("click", closeAllPopovers);
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeScopePop();
+    if (e.key === "Escape") closeAllPopovers();
   });
-  window.addEventListener("blur", closeScopePop);
+  // A click inside the mockup lands in its iframe and never reaches `document`;
+  // the window losing focus to the iframe is the signal instead.
+  window.addEventListener("blur", closeAllPopovers);
 
   function selectProject(slug) {
     state.activeProject = slug;
@@ -394,8 +419,11 @@
       state.offset = 0;
       state.exhausted = false;
       state.mockups = [];
+      // "cached per row until the feed reloads" (task brief) — a reload
+      // invalidates every row's fetched version list, not just the visible ones.
+      versionsCache = {};
       // clear feed but keep container
-      var items = feedContainer.querySelectorAll(".feed-item, .feed-date, .feed-loader");
+      var items = feedContainer.querySelectorAll(".feed-item, .feed-date, .feed-loader, .ver-list");
       items.forEach(function (el) { el.remove(); });
       feedStatusEl.textContent = "Loading...";
       feedStatusEl.style.display = "";
@@ -454,8 +482,10 @@
 
     var filtered = state.mockups;
 
-    // Always clear and re-render with date separators
-    var oldItems = feedContainer.querySelectorAll(".feed-item, .feed-date");
+    // Always clear and re-render with date separators. Any open .ver-list
+    // (a feed row's expanded version history) is torn down with its row —
+    // it isn't restored on re-render; see createFeedItem.
+    var oldItems = feedContainer.querySelectorAll(".feed-item, .feed-date, .ver-list");
     oldItems.forEach(function (node) { node.remove(); });
 
     if (filtered.length === 0) {
@@ -540,6 +570,13 @@
     delBtn.appendChild(text("\u2715"));
     delBtn.addEventListener("click", function (e) {
       e.stopPropagation();
+      // A single-version design keeps the old no-confirm behaviour; a design
+      // with history confirms and names the version count, since deleting it
+      // takes every version with it.
+      if (mockup.version_count >= 2 &&
+          !confirm("Delete '" + mockup.title + "' and all " + mockup.version_count + " versions?")) {
+        return;
+      }
       deleteMockup(mockup.id).catch(function () {
         // Flash the button so a failed delete isn't a silent no-op.
         delBtn.classList.add("failed");
@@ -561,12 +598,148 @@
     typeEl.appendChild(text(mockup.content_type));
     meta.appendChild(typeEl);
 
+    if (mockup.version_count >= 2) {
+      var chip = el("button", "ver-chip", { type: "button" });
+      chip.appendChild(text(mockup.version_count + " versions"));
+      chip.addEventListener("click", function (e) {
+        e.stopPropagation();
+        toggleVersionList(mockup, item, chip);
+      });
+      meta.appendChild(chip);
+    }
+
     var time = el("span", "feed-time");
     time.appendChild(text(formatTime(mockup.created_at)));
     meta.appendChild(time);
 
     item.appendChild(meta);
     return item;
+  }
+
+  /* \u2500\u2500 Version chip + history list (feed rows) \u2500\u2500 */
+
+  // Opens/closes the .ver-list under `item` for `mockup`, fetching its
+  // versions from /api/mockups/{id} on first open and caching them in
+  // versionsCache (invalidated on the next feed reload, see loadMockups).
+  function toggleVersionList(mockup, item, chip) {
+    var list = item.nextElementSibling;
+    if (list && list.classList.contains("ver-list")) {
+      var nowOpen = list.classList.toggle("open");
+      chip.classList.toggle("open", nowOpen);
+      return;
+    }
+
+    list = el("div", "ver-list open");
+    chip.classList.add("open");
+    item.insertAdjacentElement("afterend", list);
+
+    var cached = versionsCache[mockup.id];
+    if (cached) {
+      renderVersionList(list, mockup, cached);
+      return;
+    }
+    var loading = el("div", "ver-list-loading");
+    loading.appendChild(text("Loading\u2026"));
+    list.appendChild(loading);
+    fetch("/api/mockups/" + encodeURIComponent(mockup.id))
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)); })
+      .then(function (data) {
+        versionsCache[mockup.id] = data.versions;
+        renderVersionList(list, mockup, data.versions);
+      })
+      .catch(function () {
+        clearChildren(list);
+        var failed = el("div", "ver-list-loading");
+        failed.appendChild(text("Couldn't load versions"));
+        list.appendChild(failed);
+      });
+  }
+
+  // (Re)draws the rows inside an open .ver-list from a cached `versions` array
+  // (newest first, as returned by GET /api/mockups/{id}). Also used to refresh
+  // highlighting after a selection changes while the list stays open.
+  function renderVersionList(list, mockup, versions) {
+    clearChildren(list);
+    var latestNumber = versions.length ? versions[0].number : null;
+    var isActiveDesign = state.activeMockupId === mockup.id;
+    var effectiveActive = state.activeVersion == null ? latestNumber : state.activeVersion;
+
+    versions.forEach(function (v) {
+      var isLatest = v.number === latestNumber;
+      var isRowActive = isActiveDesign && v.number === effectiveActive;
+      var row = el("div", "ver-row" + (isRowActive ? " active" : ""));
+      var activate = function () {
+        if (isLatest) selectMockup(mockup.id);
+        else selectMockup(mockup.id, v.number);
+      };
+      row.addEventListener("click", function (e) {
+        if (e.target.closest(".ver-split")) return;
+        activate();
+      });
+      makeActivatable(row, activate);
+
+      var num = el("span", "ver-row-num");
+      num.appendChild(text("v" + v.number));
+      row.appendChild(num);
+
+      var vTitle = el("span", "ver-row-title", { title: v.title });
+      vTitle.appendChild(text(v.title));
+      row.appendChild(vTitle);
+
+      if (isLatest) {
+        var tag = el("span", "ver-row-latest");
+        tag.appendChild(text("latest"));
+        row.appendChild(tag);
+      }
+
+      var vTime = el("span", "ver-row-time");
+      vTime.appendChild(text(formatTime(v.created_at)));
+      row.appendChild(vTime);
+
+      var split = el("button", "ver-split", { type: "button", title: "Split into its own mockup" });
+      split.insertAdjacentHTML("afterbegin", SPLIT_SVG);
+      split.addEventListener("click", function (e) {
+        e.stopPropagation();
+        splitVersion(mockup, v, split);
+      });
+      row.appendChild(split);
+
+      list.appendChild(row);
+    });
+  }
+
+  // If `mockupId`'s row currently has its version list open, redraw it from
+  // the cache so the highlighted "active" row follows a selection made
+  // elsewhere (e.g. clicking the feed row itself, or a version row in the
+  // list) without waiting for another fetch.
+  function refreshOpenVersionList(mockupId) {
+    var item = null;
+    feedContainer.querySelectorAll(".feed-item").forEach(function (row) {
+      if (row.getAttribute("data-id") === mockupId) item = row;
+    });
+    if (!item) return;
+    var list = item.nextElementSibling;
+    if (!list || !list.classList.contains("ver-list") || !list.classList.contains("open")) return;
+    var cached = versionsCache[mockupId];
+    if (!cached) return;
+    var mockup = state.mockups.find(function (m) { return m.id === mockupId; }) || { id: mockupId };
+    renderVersionList(list, mockup, cached);
+  }
+
+  function splitVersion(mockup, version, splitBtn) {
+    if (!confirm("Split v" + version.number + " '" + version.title + "' into its own mockup?")) return;
+    fetch("/api/mockups/" + encodeURIComponent(mockup.id) + "/versions/" + version.number + "/split", {
+      method: "POST"
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)); })
+      .then(function (newDesign) {
+        Promise.all([loadProjects(), loadFavoritesCount()]).then(renderProjects);
+        return loadMockups(true).then(function () { selectMockup(newDesign.id); });
+      })
+      .catch(function () {
+        splitBtn.classList.add("failed");
+        setTimeout(function () { splitBtn.classList.remove("failed"); }, 1500);
+      });
   }
 
   /* ── Deselect ── */
@@ -591,8 +764,11 @@
 
   function deselectMockup() {
     state.activeMockupId = null;
+    state.activeVersion = null;
+    activeMockupDetail = null;
     var url = new URL(window.location);
     url.searchParams.delete("mockup");
+    url.searchParams.delete("v");
     history.replaceState(null, "", url);
 
     feedContainer.querySelectorAll(".feed-item").forEach(function (el) {
@@ -604,13 +780,38 @@
     resetMetaBarEmpty();
   }
 
+  /* ── URL + feed highlight sync ── */
+  // `?mockup={id}` alone always means "latest" (follows future versions);
+  // `&v={n}` pins the link to that version. Never a query string on /view —
+  // only the gallery URL uses one (spec §7).
+  function syncUrl(id, version) {
+    var url = new URL(window.location);
+    url.searchParams.set("mockup", id);
+    if (version != null) url.searchParams.set("v", String(version));
+    else url.searchParams.delete("v");
+    history.replaceState(null, "", url);
+  }
+
+  function highlightActiveFeedRow(id) {
+    feedContainer.querySelectorAll(".feed-item").forEach(function (row) {
+      row.classList.toggle("active", row.getAttribute("data-id") === id);
+    });
+  }
+
   /* ── Clipboard ── */
   function galleryLink(mockup) {
     return window.location.origin + "/?mockup=" + encodeURIComponent(mockup.id);
   }
 
-  function directLink(mockup) {
-    return window.location.origin + "/view/" + encodeURIComponent(mockup.id);
+  // `version` omitted (or null) links to the latest, which is what every
+  // caller except the viewer bar wants — the viewer bar passes state.activeVersion
+  // so its copy-link/pop-out follow whichever version is currently on screen.
+  function viewPath(id, version) {
+    return "/view/" + encodeURIComponent(id) + (version != null ? "/v/" + version : "");
+  }
+
+  function directLink(mockup, version) {
+    return window.location.origin + viewPath(mockup.id, version);
   }
 
   // Copy `str`, flash the button's label to okText/failText, then restore its original
@@ -686,7 +887,16 @@
         s.classList.toggle("starred", mockup.favorite);
       }
     });
-    if (state.activeMockupId === mockup.id) renderMetaBar(mockup);
+    if (state.activeMockupId !== mockup.id) return;
+    // Re-render from activeMockupDetail (the full detail behind the current
+    // view) rather than `mockup`, which may be only a feed-row summary and
+    // lack the `versions` array a multi-version pill needs.
+    if (activeMockupDetail && activeMockupDetail.id === mockup.id) {
+      activeMockupDetail.favorite = mockup.favorite;
+      renderMetaBar(activeMockupDetail, state.activeVersion);
+    } else {
+      renderMetaBar(mockup, state.activeVersion);
+    }
   }
 
   async function deleteMockup(id) {
@@ -699,6 +909,8 @@
     // If we deleted the active mockup, clear the viewer
     if (state.activeMockupId === id) {
       state.activeMockupId = null;
+      state.activeVersion = null;
+      activeMockupDetail = null;
       clearChildren(viewer);
       viewer.appendChild(createEmptyViewer());
       resetMetaBarEmpty();
@@ -720,50 +932,68 @@
   }
 
   /* ── Mockup Selection ── */
-  function selectMockup(id) {
+  // `version`: number to pin to a specific version, or omitted/null to follow
+  // the latest. `id` may be a design id or, from a deep link (RF-5), an alias
+  // id — fetchAndDisplay resolves that case and rewrites the URL.
+  function selectMockup(id, version) {
     state.activeMockupId = id;
+    state.activeVersion = version || null;
 
     // On mobile, dismiss the drawer so the chosen mockup is actually visible.
     setNav(false);
 
-    // Update URL
-    var url = new URL(window.location);
-    url.searchParams.set("mockup", id);
-    history.replaceState(null, "", url);
+    syncUrl(id, state.activeVersion);
+    highlightActiveFeedRow(id);
 
-    // Update feed active state
-    feedContainer.querySelectorAll(".feed-item").forEach(function (el) {
-      if (el.getAttribute("data-id") === id) el.classList.add("active");
-      else el.classList.remove("active");
-    });
-
-    // Find mockup data
-    var mockup = state.mockups.find(function (m) { return m.id === id; });
-    if (!mockup) {
-      // Need to fetch it
-      fetchAndDisplay(id);
+    var summary = state.mockups.find(function (m) { return m.id === id; });
+    // A design with only one version renders straight from the feed summary
+    // (today's fast path, no round trip). A design with several needs a full
+    // fetch anyway: the pill's "latest" number can differ from version_count
+    // once a version has been deleted (numbers are never reused, so gaps are
+    // possible), and only /api/mockups/{id} returns the true one. An id with
+    // no summary at all (not yet loaded, or an alias) also needs the fetch.
+    if (!summary || summary.version_count >= 2) {
+      fetchAndDisplay(id, state.activeVersion);
       return;
     }
 
-    renderViewer(mockup);
-    renderMetaBar(mockup);
+    activeMockupDetail = summary;
+    renderViewer(summary, state.activeVersion);
+    renderMetaBar(summary, state.activeVersion);
   }
 
-  async function fetchAndDisplay(id) {
-    var resp;
+  async function fetchAndDisplay(id, version) {
+    var url = "/api/mockups/" + encodeURIComponent(id);
+    if (version != null) url += "?v=" + version;
+    var mockup;
     try {
-      resp = await fetch("/api/mockups/" + encodeURIComponent(id));
+      var resp = await fetch(url);
       if (!resp.ok) return;
-      var mockup = await resp.json();
-      // The selection may have changed while this request was in flight; don't
-      // clobber the viewer with a now-stale response.
-      if (state.activeMockupId !== id) return;
-      renderViewer(mockup);
-      renderMetaBar(mockup);
-    } catch (e) { /* network error — leave the current view in place */ }
+      mockup = await resp.json();
+    } catch (e) { return; /* network error — leave the current view in place */ }
+
+    // The selection may have changed while this request was in flight; don't
+    // clobber the viewer with a now-stale response. Compared against the id
+    // this request was made for, before it's possibly replaced below.
+    if (state.activeMockupId !== id) return;
+
+    // RF-5: `id` may have been an alias — GET /api/mockups/{id} resolves it
+    // and returns the design's own id plus the version it's pinned to. Adopt
+    // both and rewrite the URL so the alias never lingers in the address bar.
+    var wasAlias = mockup.id !== id;
+    state.activeMockupId = mockup.id;
+    state.activeVersion = (version != null || wasAlias) ? mockup.version : null;
+
+    syncUrl(state.activeMockupId, state.activeVersion);
+    highlightActiveFeedRow(state.activeMockupId);
+
+    activeMockupDetail = mockup;
+    renderViewer(mockup, state.activeVersion);
+    renderMetaBar(mockup, state.activeVersion);
+    refreshOpenVersionList(state.activeMockupId);
   }
 
-  function renderMetaBar(mockup) {
+  function renderMetaBar(mockup, version) {
     clearBarLeftRowExtras();
     clearChildren(barContent);
     metaBar.classList.remove("empty");
@@ -781,12 +1011,12 @@
     var copyDirect = el("button", "meta-icon-btn", { title: "Copy direct link (no gallery UI)", type: "button" });
     copyDirect.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>');
     copyDirect.addEventListener("click", function () {
-      copyWithFlash(copyDirect, directLink(mockup), "\u2713", "\u2717");
+      copyWithFlash(copyDirect, directLink(mockup, version), "\u2713", "\u2717");
     });
     barLeftRow.appendChild(copyDirect);
 
     var popout = el("a", "meta-icon-btn", {
-      href: "/view/" + encodeURIComponent(mockup.id),
+      href: viewPath(mockup.id, version),
       target: "_blank", rel: "noopener", title: "Pop out"
     });
     popout.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
@@ -797,6 +1027,20 @@
     var title = el("span", "meta-title", { title: mockup.title });
     title.appendChild(text(mockup.title));
     barContent.appendChild(title);
+
+    if (mockup.version_count >= 2) {
+      // mockup.versions is newest-first; its first entry is the true latest
+      // version number, which can differ from version_count once a version
+      // has been deleted (numbers are never reused, so gaps are possible).
+      var latestNumber = (mockup.versions && mockup.versions.length) ? mockup.versions[0].number : mockup.version;
+      var shownVersion = mockup.version;
+      var isLatest = shownVersion === latestNumber;
+      var pill = el("span", "ver-pill" + (isLatest ? "" : " old"));
+      pill.appendChild(text(isLatest
+        ? ("v" + shownVersion + " · latest")
+        : ("v" + shownVersion + " of " + mockup.version_count)));
+      barContent.appendChild(pill);
+    }
 
     if (mockup.content_type === "html") {
       // Viewport: one device icon labelled with the current size, choices in a menu.
@@ -818,7 +1062,7 @@
           setViewport(v[0]);
           vpMenu.querySelectorAll(".meta-vp-opt").forEach(function (r) { r.classList.toggle("active", r === row); });
           vpLabel.textContent = v[2];
-          closeMenus();
+          closeAllPopovers();
         });
         vpMenu.appendChild(row);
       });
@@ -850,6 +1094,7 @@
     }
     addInfoField(info, "Project", mockup.project);
     addInfoField(info, "Created", formatTime(mockup.created_at));
+    addInfoField(info, "Versions", String(mockup.version_count));
     addMenu(infoBtn, info);
   }
 
@@ -858,7 +1103,7 @@
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       var wasOpen = pop.classList.contains("open");
-      closeMenus();
+      closeAllPopovers();
       if (!wasOpen) {
         pop.classList.add("open");
         btn.setAttribute("aria-expanded", "true");
@@ -882,32 +1127,17 @@
     }
   }
 
-  function closeMenus() {
-    metaBar.querySelectorAll(".meta-pop.open").forEach(function (p) { p.classList.remove("open"); });
-    metaBar.querySelectorAll('[aria-haspopup][aria-expanded="true"]').forEach(function (b) {
-      b.setAttribute("aria-expanded", "false");
-    });
-  }
-
-  document.addEventListener("click", closeMenus);
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeMenus();
-  });
-  // A click inside the mockup lands in its iframe and never reaches `document`;
-  // the window losing focus to the iframe is the signal instead.
-  window.addEventListener("blur", closeMenus);
-
   function setViewport(size) {
     viewer.classList.remove("vp-mobile", "vp-tablet");
     if (size === "mobile") viewer.classList.add("vp-mobile");
     else if (size === "tablet") viewer.classList.add("vp-tablet");
   }
 
-  function renderViewer(mockup) {
+  function renderViewer(mockup, version) {
     clearChildren(viewer);
     viewer.classList.remove("vp-mobile", "vp-tablet");
 
-    var viewUrl = "/view/" + encodeURIComponent(mockup.id);
+    var viewUrl = viewPath(mockup.id, version);
 
     if (mockup.content_type === "html") {
       var iframe = el("iframe", "viewer-iframe", {
@@ -972,6 +1202,12 @@
   function getInitialMockupId() {
     var params = new URLSearchParams(window.location.search);
     return params.get("mockup") || null;
+  }
+
+  function getInitialVersion() {
+    var params = new URLSearchParams(window.location.search);
+    var v = params.get("v");
+    return v ? parseInt(v, 10) : null;
   }
 
   /* ── Setup Guide Link ── */
@@ -1041,7 +1277,7 @@
 
     var initialId = getInitialMockupId();
     if (initialId) {
-      selectMockup(initialId);
+      selectMockup(initialId, getInitialVersion());
     } else if (state.mockups.length > 0) {
       // Auto-select most recent
       selectMockup(state.mockups[0].id);
