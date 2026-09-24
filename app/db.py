@@ -378,10 +378,13 @@ async def get_mockup(db: aiosqlite.Connection, mockup_id: str) -> dict | None:
     return _row_to_dict(row)
 
 
+# `id` breaks ties, so equal timestamps order the same under every
+# LIMIT/OFFSET: scroll pages neither repeat nor skip rows, and the gallery's
+# poll probe (one query over all loaded rows) matches the pages it compares to.
 _SORT_ORDERS = {
-    "newest": "latest_at DESC",
-    "oldest": "created_at ASC",
-    "favorites": "favorite DESC, latest_at DESC",
+    "newest": "latest_at DESC, id",
+    "oldest": "created_at ASC, id",
+    "favorites": "favorite DESC, latest_at DESC, id",
 }
 
 
@@ -433,6 +436,8 @@ async def update_mockup(db: aiosqlite.Connection, mockup_id: str, *,
                          tags: list[str] | None = None, file_path: str | None = None,
                          content_type: str | None = None,
                          created_at: str | None = None) -> bool:
+    """Direct design-row write, no version logic. The app writes through
+    versioning; tests use this to set up rows (e.g. a backdated created_at)."""
     sets = []
     params = []
     if title is not None:

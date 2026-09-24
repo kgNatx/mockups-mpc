@@ -326,3 +326,17 @@ async def test_migration_adds_alias_source_number_idempotently(tmp_data_dir):
         assert "source_number" in cols
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_equal_timestamps_page_consistently(db):
+    t = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for i in ["c", "a", "e", "b", "d"]:
+        await insert_mockup(db, id=i, project="P", project_slug="p", title=i, description=None,
+                            content_type="html", file_path=f"p/{i}.html", tags=[],
+                            created_at=t, updated_at=t)
+    for sort in ("newest", "oldest", "favorites"):
+        whole = [m["id"] for m in await list_mockups(db, sort=sort, limit=5, offset=0)]
+        paged = [m["id"] for off in range(5)
+                 for m in await list_mockups(db, sort=sort, limit=1, offset=off)]
+        assert paged == whole == ["a", "b", "c", "d", "e"]

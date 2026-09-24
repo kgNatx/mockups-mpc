@@ -2,7 +2,9 @@ import pytest
 
 from app import versioning
 from app.db import get_mockup, get_versions, init_db, list_design_titles
-from app.seed import GUIDE_PATH, refresh_guide, seed_if_empty
+import hashlib
+
+from app.seed import _stamped_guide, refresh_guide, seed_if_empty
 
 
 @pytest.fixture
@@ -34,8 +36,7 @@ async def test_refresh_adds_shipped_guide_as_new_version(db, tmp_data_dir):
     await refresh_guide(db)
     versions = await get_versions(db, gid)
     assert [v["number"] for v in versions] == [2, 1]
-    assert (tmp_data_dir / versions[0]["file_path"]).read_text() == \
-        GUIDE_PATH.read_text(encoding="utf-8")
+    assert (tmp_data_dir / versions[0]["file_path"]).read_bytes() == _stamped_guide()
     design = await get_mockup(db, gid)
     assert design["title"] == "Setup Guide"  # the gallery's guide button finds it by title
     assert design["description"] == v1["description"]
@@ -93,13 +94,33 @@ async def test_refresh_keeps_a_user_version_on_top(db, tmp_data_dir):
     assert [v["number"] for v in await get_versions(db, gid)] == [2, 1]
 
 
+def _stamp(body: bytes) -> str:
+    digest = hashlib.sha256(body).hexdigest()
+    return (body + f"\n<!-- mockups-mpc-guide sha256={digest} -->\n".encode()).decode()
+
+
 async def test_refresh_replaces_an_older_shipped_guide(db, tmp_data_dir):
     await seed_if_empty(db)
     gid = await _guide_id(db)
-    await versioning.add_version(
-        db, gid, title="Setup Guide", description=None, content_type="html",
-        content='<html><head><meta name="mockups-mpc-guide" content="shipped"></head>old</html>')
+    await versioning.add_version(db, gid, title="Setup Guide", description=None,
+                                 content_type="html", content=_stamp(b"<p>old shipped guide</p>"))
     await refresh_guide(db)
     versions = await get_versions(db, gid)
     assert [v["number"] for v in versions] == [3, 2, 1]
-    assert (tmp_data_dir / versions[0]["file_path"]).read_bytes() == GUIDE_PATH.read_bytes()
+    assert (tmp_data_dir / versions[0]["file_path"]).read_bytes() == _stamped_guide()
+
+
+async def test_refresh_keeps_an_edited_copy_that_kept_the_stamp(db, tmp_data_dir):
+    await seed_if_empty(db)
+    gid = await _guide_id(db)
+    edited = _stamp(b"<p>old shipped guide</p>").replace("old shipped", "my own")
+    await versioning.add_version(db, gid, title="Setup Guide", description=None,
+                                 content_type="html", content=edited)
+    await refresh_guide(db)
+    assert [v["number"] for v in await get_versions(db, gid)] == [2, 1]
+
+
+async def test_seeded_guide_is_stamped(db, tmp_data_dir):
+    await seed_if_empty(db)
+    v1 = (await get_versions(db, await _guide_id(db)))[0]
+    assert (tmp_data_dir / v1["file_path"]).read_bytes() == _stamped_guide()

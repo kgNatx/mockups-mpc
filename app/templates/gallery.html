@@ -467,9 +467,10 @@
       data = await resp.json();
     } catch (e) {
       // Surface the failure instead of silently freezing the feed forever.
-      // loadFailed makes the next poll tick retry the load (see pollForUpdates).
-      state.loadFailed = true;
+      // A failed reset makes the next poll tick retry it (see pollForUpdates);
+      // a failed scroll page keeps the rows shown and retries on the next scroll.
       if (reset) {
+        state.loadFailed = true;
         feedStatusEl.textContent = "Couldn't load — retrying…";
         feedStatusEl.style.display = "";
       }
@@ -911,14 +912,21 @@
         body: JSON.stringify({ favorite: next })
       });
       if (!resp.ok) throw new Error("request failed");
+      var saved = await resp.json();
+      // The server bumped updated_at. Copy it onto the feed row (which may be
+      // another object than `mockup`, e.g. when the viewer-bar star was used)
+      // and rebaseline, or the next poll sees our own change and reloads.
+      state.mockups.forEach(function (m) {
+        if (m.id === saved.id) { m.updated_at = saved.updated_at; m.favorite = saved.favorite; }
+      });
       await loadFavoritesCount();
       renderProjects();
       // If we're viewing the favorites filter and just unfavorited, drop it from the feed
       if (state.activeProject === FAVORITES && !next) {
         state.mockups = state.mockups.filter(function (m) { return m.id !== mockup.id; });
         renderFeed(true);
-        rebaselinePoll();
       }
+      rebaselinePoll();
     } catch (e) {
       mockup.favorite = !next;        // rollback
       syncFavoriteUI(mockup);
