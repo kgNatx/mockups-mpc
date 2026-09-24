@@ -23,7 +23,7 @@ from fastmcp.utilities.lifespan import combine_lifespans
 app = FastAPI(title="Mockups MPC", lifespan=combine_lifespans(app_lifespan, mcp_http.lifespan))
 
 # SSE mount must come first (longer prefix match) — /mcp/sse/sse is the SSE endpoint, /mcp/sse/messages/ is the POST endpoint
-# HTTP mount at /mcp — /mcp/mcp is the streamable HTTP endpoint
+# HTTP mount at /mcp — /mcp/ is the streamable HTTP endpoint (the app's path is "/")
 app.mount("/mcp/sse", mcp_sse)
 app.mount("/mcp", mcp_http)
 
