@@ -11,17 +11,33 @@
 
     <!-- ===== SIDEBAR ===== -->
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand">
-        <h1>Mockups MPC</h1>
-        <div class="brand-sub-row">
-          <div class="brand-sub">Design Artifacts</div>
-          <a class="brand-guide-link" id="guide-link" href="#" style="display:none">Setup Guide</a>
-        </div>
+      <div class="brand-bar">
+        <svg class="frame-mark" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M2.5 9h19"/><rect class="frame-fill" x="6" y="12" width="7" height="5" rx="1"/></svg>
+        <span class="brand-word">Mockups <em>MPC</em></span>
+        <span class="brand-readout"><b id="brand-count">0</b> designs &middot; v{{ version }}</span>
+        <a class="brand-guide-btn" id="guide-link" href="#" style="display:none" title="Setup Guide" aria-label="Setup Guide">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.01"/></svg>
+        </a>
       </div>
 
-      <div class="sidebar-projects">
-        <div class="section-label">Projects</div>
-        <ul class="project-list" id="project-list"></ul>
+      <div class="scope-wrap">
+        <div class="scope-row">
+          <button class="scope-btn" id="scope-btn" type="button" aria-haspopup="true" aria-expanded="false">
+            <span class="scope-name" id="scope-name">All projects</span>
+            <span class="scope-meta"><span id="scope-count">0</span> &#9662;</span>
+          </button>
+          <button class="fav-toggle" id="fav-toggle" type="button" aria-pressed="false" title="Favorites">
+            <span class="fav-star">&#9733;</span><span id="fav-count">0</span>
+          </button>
+        </div>
+        <div class="scope-pop" id="scope-pop">
+          <input
+            type="text" class="scope-filter" id="scope-filter"
+            placeholder="Filter projects&hellip;"
+            autocomplete="off" spellcheck="false"
+          >
+          <ul class="scope-list" id="scope-list"></ul>
+        </div>
       </div>
 
       <div class="sidebar-filter">
@@ -47,12 +63,22 @@
 
     <!-- ===== MAIN VIEWER ===== -->
     <main class="main">
-      <button class="menu-toggle" id="menu-toggle" type="button"
-              aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
-        <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
       <div class="meta-bar empty" id="meta-bar">
-        <span class="meta-hint">Select a mockup to preview</span>
+        <div class="bar-left" id="bar-left">
+          <div class="bar-eyebrow">
+            <svg class="frame-mark" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M2.5 9h19"/><rect class="frame-fill" x="6" y="12" width="7" height="5" rx="1"/></svg>
+            <span>Mockups&middot;<b>MPC</b></span>
+          </div>
+          <div class="bar-left-row" id="bar-left-row">
+            <button class="menu-toggle" id="menu-toggle" type="button"
+                    aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
+              <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="bar-content" id="bar-content">
+          <span class="meta-hint">Select a mockup to preview</span>
+        </div>
       </div>
       <div class="viewer" id="viewer">
         <div class="viewer-empty">
@@ -91,15 +117,26 @@
     offset: 0,
     limit: 50,
     loading: false,
-    exhausted: false
+    exhausted: false,
+    scopeFilterText: ""
   };
 
   /* ── DOM refs ── */
-  var projectListEl  = document.getElementById("project-list");
+  var scopeBtn        = document.getElementById("scope-btn");
+  var scopeNameEl      = document.getElementById("scope-name");
+  var scopeCountEl     = document.getElementById("scope-count");
+  var scopePop         = document.getElementById("scope-pop");
+  var scopeFilterInput = document.getElementById("scope-filter");
+  var scopeListEl      = document.getElementById("scope-list");
+  var favToggle        = document.getElementById("fav-toggle");
+  var favCountEl       = document.getElementById("fav-count");
+  var brandCountEl     = document.getElementById("brand-count");
   var feedContainer   = document.getElementById("feed-container");
   var feedStatusEl    = document.getElementById("feed-status");
   var filterInput     = document.getElementById("filter-input");
   var metaBar         = document.getElementById("meta-bar");
+  var barLeftRow      = document.getElementById("bar-left-row");
+  var barContent      = document.getElementById("bar-content");
   var viewer          = document.getElementById("viewer");
   var shell           = document.querySelector(".shell");
   var menuToggle      = document.getElementById("menu-toggle");
@@ -228,55 +265,114 @@
     } catch (e) { /* leave previous value */ }
   }
 
+  // Renders the scope button, the favorites toggle, the brand-bar readout,
+  // and (via renderScopeList) the popover's project list — everything that
+  // depends on state.projects, state.favoritesCount, or state.activeProject.
   function renderProjects() {
-    clearChildren(projectListEl);
-
-    // Favorites pseudo-item
-    var favItem = el("li", "project-item favorites" + (state.activeProject === FAVORITES ? " active" : ""));
-    var favActivate = function () { selectProject(FAVORITES); };
-    favItem.addEventListener("click", favActivate);
-    makeActivatable(favItem, favActivate);
-    var favName = el("span", "project-name");
-    var favStar = el("span", "fav-star");
-    favStar.appendChild(text("★"));
-    favName.appendChild(favStar);
-    favName.appendChild(text("Favorites"));
-    var favCount = el("span", "project-count");
-    favCount.appendChild(text(String(state.favoritesCount || 0)));
-    favItem.appendChild(favName);
-    favItem.appendChild(favCount);
-    projectListEl.appendChild(favItem);
-
-    // "All" item
-    var allItem = el("li", "project-item" + (state.activeProject === null ? " active" : ""));
-    var allActivate = function () { selectProject(null); };
-    allItem.addEventListener("click", allActivate);
-    makeActivatable(allItem, allActivate);
-    var allName = el("span", "project-name");
-    allName.appendChild(text("All"));
-    var allCount = el("span", "project-count");
     var total = state.projects.reduce(function (s, p) { return s + p.count; }, 0);
-    allCount.appendChild(text(String(total)));
-    allItem.appendChild(allName);
-    allItem.appendChild(allCount);
-    projectListEl.appendChild(allItem);
 
-    projectListEl.appendChild(el("div", "project-divider"));
+    if (brandCountEl) brandCountEl.textContent = String(total);
 
-    state.projects.forEach(function (proj) {
-      var item = el("li", "project-item" + (state.activeProject === proj.project_slug ? " active" : ""));
-      var activate = function () { selectProject(proj.project_slug); };
+    var activeName, activeCount;
+    if (state.activeProject === FAVORITES) {
+      activeName = "Favorites";
+      activeCount = state.favoritesCount || 0;
+    } else if (state.activeProject === null) {
+      activeName = "All projects";
+      activeCount = total;
+    } else {
+      var active = state.projects.find(function (p) { return p.project_slug === state.activeProject; });
+      activeName = active ? active.project : state.activeProject;
+      activeCount = active ? active.count : 0;
+    }
+    scopeNameEl.textContent = activeName;
+    scopeCountEl.textContent = String(activeCount);
+
+    favToggle.setAttribute("aria-pressed", state.activeProject === FAVORITES ? "true" : "false");
+    favCountEl.textContent = String(state.favoritesCount || 0);
+
+    renderScopeList();
+  }
+
+  // The scope popover's project list: "All projects" (pinned), a divider,
+  // then every project in /api/projects order (most recently active first),
+  // narrowed by state.scopeFilterText (case-insensitive name match).
+  function renderScopeList() {
+    clearChildren(scopeListEl);
+
+    var total = state.projects.reduce(function (s, p) { return s + p.count; }, 0);
+    var filter = state.scopeFilterText.toLowerCase();
+    var candidates = [{ name: "All projects", slug: null, count: total }].concat(
+      state.projects.map(function (p) {
+        return { name: p.project, slug: p.project_slug, count: p.count };
+      })
+    );
+    var matches = filter
+      ? candidates.filter(function (c) { return c.name.toLowerCase().indexOf(filter) !== -1; })
+      : candidates;
+
+    if (matches.length === 0) {
+      var empty = el("li", "scope-empty");
+      empty.appendChild(text("No matches"));
+      scopeListEl.appendChild(empty);
+      return;
+    }
+
+    matches.forEach(function (c) {
+      var item = el("li", "scope-item" + (state.activeProject === c.slug ? " active" : ""));
+      var activate = function () {
+        selectProject(c.slug);
+        closeScopePop();
+      };
       item.addEventListener("click", activate);
       makeActivatable(item, activate);
-      var name = el("span", "project-name");
-      name.appendChild(text(proj.project));
-      var count = el("span", "project-count");
-      count.appendChild(text(String(proj.count)));
+      var name = el("span", "scope-item-name");
+      name.appendChild(text(c.name));
+      var count = el("span", "scope-item-count");
+      count.appendChild(text(String(c.count)));
       item.appendChild(name);
       item.appendChild(count);
-      projectListEl.appendChild(item);
+      scopeListEl.appendChild(item);
+
+      // Divider right after the pinned "All projects" row, only when there's
+      // something below it to separate it from.
+      if (c.slug === null && matches.length > 1) {
+        scopeListEl.appendChild(el("li", "scope-divider"));
+      }
     });
   }
+
+  function closeScopePop() {
+    scopePop.classList.remove("open");
+    scopeBtn.setAttribute("aria-expanded", "false");
+  }
+
+  scopeBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    var wasOpen = scopePop.classList.contains("open");
+    closeScopePop();
+    if (!wasOpen) {
+      scopePop.classList.add("open");
+      scopeBtn.setAttribute("aria-expanded", "true");
+      scopeFilterInput.value = "";
+      state.scopeFilterText = "";
+      renderScopeList();
+      scopeFilterInput.focus();
+    }
+  });
+  scopePop.addEventListener("click", function (e) { e.stopPropagation(); });
+  scopeFilterInput.addEventListener("input", function () {
+    state.scopeFilterText = scopeFilterInput.value.trim();
+    renderScopeList();
+  });
+  favToggle.addEventListener("click", function () {
+    selectProject(state.activeProject === FAVORITES ? null : FAVORITES);
+  });
+  document.addEventListener("click", closeScopePop);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeScopePop();
+  });
+  window.addEventListener("blur", closeScopePop);
 
   function selectProject(slug) {
     state.activeProject = slug;
@@ -474,6 +570,25 @@
   }
 
   /* ── Deselect ── */
+  // #bar-left (eyebrow + menu toggle) is a persistent part of #meta-bar, not
+  // dynamic content — clearing the bar back to its "nothing selected" state
+  // must leave it standing and only clear what renderMetaBar() fills in:
+  // #bar-left-row's star/copy/pop-out buttons and #bar-content's title/icons.
+  function clearBarLeftRowExtras() {
+    Array.from(barLeftRow.children).forEach(function (c) {
+      if (c !== menuToggle) barLeftRow.removeChild(c);
+    });
+  }
+
+  function resetMetaBarEmpty() {
+    clearBarLeftRowExtras();
+    clearChildren(barContent);
+    metaBar.classList.add("empty");
+    var hint = el("span", "meta-hint");
+    hint.appendChild(text("Select a mockup to preview"));
+    barContent.appendChild(hint);
+  }
+
   function deselectMockup() {
     state.activeMockupId = null;
     var url = new URL(window.location);
@@ -486,11 +601,7 @@
 
     clearChildren(viewer);
     viewer.appendChild(createEmptyViewer());
-    clearChildren(metaBar);
-    metaBar.classList.add("empty");
-    var hint = el("span", "meta-hint");
-    hint.appendChild(text("Select a mockup to preview"));
-    metaBar.appendChild(hint);
+    resetMetaBarEmpty();
   }
 
   /* ── Clipboard ── */
@@ -590,11 +701,7 @@
       state.activeMockupId = null;
       clearChildren(viewer);
       viewer.appendChild(createEmptyViewer());
-      clearChildren(metaBar);
-      metaBar.classList.add("empty");
-      var hint = el("span", "meta-hint");
-      hint.appendChild(text("Select a mockup to preview"));
-      metaBar.appendChild(hint);
+      resetMetaBarEmpty();
     }
 
     renderFeed(true);
@@ -657,7 +764,8 @@
   }
 
   function renderMetaBar(mockup) {
-    clearChildren(metaBar);
+    clearBarLeftRowExtras();
+    clearChildren(barContent);
     metaBar.classList.remove("empty");
 
     var metaStar = el("button", "meta-star" + (mockup.favorite ? " starred" : ""),
@@ -667,7 +775,7 @@
       e.stopPropagation();
       toggleFavorite(mockup);
     });
-    metaBar.appendChild(metaStar);
+    barLeftRow.appendChild(metaStar);
 
     // Actions sit beside the star as icons, so the title keeps the width.
     var copyDirect = el("button", "meta-icon-btn", { title: "Copy direct link (no gallery UI)", type: "button" });
@@ -675,20 +783,20 @@
     copyDirect.addEventListener("click", function () {
       copyWithFlash(copyDirect, directLink(mockup), "\u2713", "\u2717");
     });
-    metaBar.appendChild(copyDirect);
+    barLeftRow.appendChild(copyDirect);
 
     var popout = el("a", "meta-icon-btn", {
       href: "/view/" + encodeURIComponent(mockup.id),
       target: "_blank", rel: "noopener", title: "Pop out"
     });
     popout.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
-    metaBar.appendChild(popout);
+    barLeftRow.appendChild(popout);
 
-    metaBar.appendChild(el("span", "meta-sep"));
+    barContent.appendChild(el("span", "meta-sep"));
 
     var title = el("span", "meta-title", { title: mockup.title });
     title.appendChild(text(mockup.title));
-    metaBar.appendChild(title);
+    barContent.appendChild(title);
 
     if (mockup.content_type === "html") {
       // Viewport: one device icon labelled with the current size, choices in a menu.
@@ -721,7 +829,7 @@
       fsBtn.addEventListener("click", function () {
         if (viewer.requestFullscreen) viewer.requestFullscreen();
       });
-      metaBar.appendChild(fsBtn);
+      barContent.appendChild(fsBtn);
     }
 
     // Description, tags, project and time live in a popover behind the info button.
@@ -757,8 +865,8 @@
       }
     });
     pop.addEventListener("click", function (e) { e.stopPropagation(); });
-    metaBar.appendChild(btn);
-    metaBar.appendChild(pop);
+    barContent.appendChild(btn);
+    barContent.appendChild(pop);
   }
 
   function addInfoField(info, label, value) {

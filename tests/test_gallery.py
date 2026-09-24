@@ -11,6 +11,20 @@ async def test_gallery_loads(client):
 
 
 @pytest.mark.asyncio
+async def test_gallery_has_compact_sidebar_markup(client):
+    # The compact sidebar (brand bar + scope picker) replaces the old
+    # brand block + full project list. The old project list markup must
+    # be gone; the new brand bar, scope picker, and collapsed-bar eyebrow
+    # must be present.
+    resp = await client.get("/")
+    assert resp.status_code == 200
+    assert 'class="brand-bar"' in resp.text
+    assert 'id="scope-btn"' in resp.text
+    assert 'class="bar-eyebrow"' in resp.text
+    assert 'id="project-list"' not in resp.text
+
+
+@pytest.mark.asyncio
 async def test_gallery_stylesheet_is_cache_busted(client):
     # The stylesheet href must carry a ?v=<version> query so each release busts
     # the browser cache; no unversioned reference should remain.
