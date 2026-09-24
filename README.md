@@ -71,9 +71,10 @@ There is no built-in authentication. All API endpoints and MCP tools are open to
 A mockup ("design") can hold more than one version — every revision of the same screen, kept in one place instead of scattering separate mockups.
 
 - **Add a version to an existing design:** upload with `-F parent=<id>` (a design or alias id). It's added as the next version; earlier versions and their files are kept.
-- **Auto-fold:** upload without `parent` and the server still checks for a match. If exactly one design in the same project has the same *base title* — the title with trailing markers like `v2`, `draft 3`, `rev 2`, `r5`, or a bare trailing number stripped — the upload becomes a new version of it automatically. Variant markers (`option B`, `variant C`, a standalone trailing letter) are never stripped, so "Hero — option B" and "Hero — option C" stay separate designs. Zero or several matches also create a new design. Pass `-F fold=false` to always create a new design regardless of title.
-- **Direct link to one version:** `/view/{id}/v/{n}` serves that exact version; `/view/{id}` always serves the latest.
-- **Old ids keep working.** Folding or splitting never deletes an id you've already been given — it becomes an *alias* pinned to the version it used to point at, and every read (`/view/…`, `get_mockup`, etc.) resolves it transparently.
+- **Auto-fold:** upload without `parent` and the server still checks for a match. If exactly one design in the same project has the same *base title* — the title with trailing markers like `v2`, `draft 3`, `rev 2`, `r5`, a bare trailing number, or trailing parentheticals such as `(rail fixed)` stripped — the upload becomes a new version of it automatically. Variant markers (`option B`, `variant C`, a standalone trailing letter) are never stripped, so "Hero — option B" and "Hero — option C" stay separate designs. Zero or several matches also create a new design. Pass `-F fold=false` to always create a new design regardless of title. An auto-folded upload's response carries `folded: true` and a `note` saying how to split it back out if the match was wrong.
+- **Direct link to one version:** `/view/{id}/v/{n}` serves that exact version. `/view/{id}` serves the latest version when `{id}` is a design id, and the pinned version when `{id}` is an alias id (see below).
+- **Folding keeps old links working.** When a mockup is folded into another design, its id becomes an *alias* pinned to the version it turned into, and every read (`/view/…`, `get_mockup`, etc.) resolves it transparently. A version link minted before the fold (`/view/{old id}/v/1`) keeps working too.
+- **Splitting and deleting a version do remove links.** A split-out version moves to its new design as v1, so its old `/view/{design}/v/{n}` link returns 404 (the new design reuses the version's alias id when it has one, so that id keeps working). Deleting a version removes it and any alias pinned to it.
 - **Undo a fold:** `split_version(id, version)` pulls one version back out into its own standalone design, reusing its old alias id if it has one.
 
 ### Merging existing duplicates (opt-in, one-time)
@@ -83,7 +84,10 @@ If you were already uploading revisions as separate mockups before this feature 
 ```bash
 python -m app.fold --dry-run     # print the proposed groups, change nothing
 python -m app.fold --apply       # perform them
+python -m app.fold --dry-run --data-dir /path/to/copy   # run against another data directory
 ```
+
+`--data-dir` points the command at a different data directory (the one holding `mockups.db`) instead of the configured one — useful for trying the fold on a scratch copy of your data before running it for real.
 
 It groups designs that share a project and a base title, oldest first, and folds each group into one design (the oldest survives; the rest become versions, with their old ids kept as aliases). **This never runs automatically** — it's a command you run by hand, and only after reviewing the dry-run output, since merging is not reversible in bulk (each design can still be split back out individually with `split_version`).
 
@@ -107,7 +111,7 @@ The server stores all content permanently. AI clients can clean up local files w
 | Route | Purpose |
 |-------|---------|
 | `GET /` | Gallery UI |
-| `GET /view/{id}` | Raw mockup, latest version (HTML rendered, images served with correct MIME type) |
+| `GET /view/{id}` | Raw mockup: the latest version for a design id, the pinned version for an alias id (HTML rendered, images served with correct MIME type) |
 | `GET /view/{id}/v/{n}` | Raw mockup, one specific version |
 | `GET /api/mockups` | JSON listing with `limit`, `offset`, `project` filter |
 | `GET /api/mockups/{id}` | Single mockup metadata, including its `versions` list; `?v={n}` points `view_url` at that version |
