@@ -1,8 +1,13 @@
 import pytest
+from fastmcp import Client
+from fastmcp.exceptions import ToolError
+
+from app import versioning
 from app.db import init_db
 from app.mcp_server import (
     _send_mockup, _list_mockups, _get_mockup,
-    _update_mockup, _delete_mockup, _tag_mockup, _set_created_at
+    _update_mockup, _delete_mockup, _tag_mockup, _set_created_at,
+    _split_version, mcp,
 )
 
 @pytest.fixture
@@ -47,11 +52,13 @@ async def test_send_invalid_content_type(db):
 
 @pytest.mark.asyncio
 async def test_list_mockups_tool(db):
+    # fold=False: "Mock 0"/"Mock 1"/"Mock 2" share a base title (a trailing bare
+    # number strips), so auto-fold would otherwise merge them into one design.
     for i in range(3):
         await _send_mockup(
             db=db, project="P", title=f"Mock {i}",
             description=None, content=f"<p>{i}</p>",
-            content_type="html", tags=[]
+            content_type="html", tags=[], fold=False
         )
     result = await _list_mockups(db=db, project=None, limit=50, offset=0)
     assert len(result) == 3
@@ -94,13 +101,17 @@ async def test_update_mockup_content(db, tmp_data_dir):
         description=None, content="<p>v1</p>",
         content_type="html", tags=[]
     )
+    v1_path = tmp_data_dir / sent["file_path"]
     result = await _update_mockup(
         db=db, id=sent["id"], title=None,
         description=None, tags=None,
         content="<p>v2</p>", content_type="html"
     )
+    # Behaviour change (spec §6.2): content update creates v2; v1 is kept, not overwritten.
+    assert result["version"] == 2
     file_content = (tmp_data_dir / result["file_path"]).read_text()
     assert file_content == "<p>v2</p>"
+    assert v1_path.exists()
 
 @pytest.mark.asyncio
 async def test_delete_mockup_tool(db, tmp_data_dir):
@@ -163,7 +174,7 @@ async def test_update_mockup_metadata_preserves_description(db):
 
 
 @pytest.mark.asyncio
-async def test_update_mockup_content_type_change_deletes_old_file(db, tmp_data_dir):
+async def test_update_mockup_content_type_change_keeps_old_version_file(db, tmp_data_dir):
     import base64
     sent = await _send_mockup(
         db=db, project="P", title="T",
@@ -180,7 +191,9 @@ async def test_update_mockup_content_type_change_deletes_old_file(db, tmp_data_d
     assert result["content_type"] == "png"
     assert result["file_path"].endswith(".png")
     assert (tmp_data_dir / result["file_path"]).exists()
-    assert not old_path.exists()  # old .html removed
+    # Behaviour change (spec §6.2): a content update adds a version, so v1's
+    # file (the old content type) is kept, not deleted.
+    assert old_path.exists()
 
 
 @pytest.mark.asyncio
@@ -208,12 +221,14 @@ async def test_set_created_at_reorders_listing(db):
 
 @pytest.mark.asyncio
 async def test_send_mockup_rolls_back_file_on_insert_failure(db, tmp_data_dir, monkeypatch):
-    import app.mcp_server as m
+    import app.db as dbm
 
     async def boom(*args, **kwargs):
         raise RuntimeError("insert failed")
 
-    monkeypatch.setattr(m, "insert_mockup", boom)
+    # _send_mockup now writes through versioning.create_design, which calls
+    # db.insert_mockup — the write-then-insert step this test targets moved there.
+    monkeypatch.setattr(dbm, "insert_mockup", boom)
     with pytest.raises(RuntimeError):
         await _send_mockup(db=db, project="P", title="T", description=None,
                            content="<p>x</p>", content_type="html", tags=[])
@@ -221,3 +236,447 @@ async def test_send_mockup_rolls_back_file_on_insert_failure(db, tmp_data_dir, m
     proj_dir = tmp_data_dir / "p"
     leftover = list(proj_dir.glob("*")) if proj_dir.exists() else []
     assert leftover == []
+
+
+# --- send_mockup: parent / fold (chunk 2) ---
+
+@pytest.mark.asyncio
+async def test_send_mockup_with_parent_adds_version(db):
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    result = await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                                content="<p>2</p>", content_type="html", tags=[],
+                                parent=a["id"])
+    assert result["id"] == a["id"]
+    assert result["version"] == 2
+    assert result["folded"] is False
+    assert "note" not in result
+    assert result["version_url"].endswith(f"/view/{a['id']}/v/2")
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_with_alias_parent_adds_version(db):
+    from app import db as dbm
+
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=a["id"], number=1)
+    result = await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                                content="<p>2</p>", content_type="html", tags=[],
+                                parent="old-link")
+    assert result["id"] == a["id"]
+    assert result["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_unknown_parent_raises(db):
+    with pytest.raises(versioning.UnknownParent, match="Unknown parent: nope"):
+        await _send_mockup(db=db, project="P", title="T", description=None,
+                           content="<p>x</p>", content_type="html", tags=[],
+                           parent="nope")
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_parent_other_project_raises(db):
+    a = await _send_mockup(db=db, project="ProjA", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    with pytest.raises(ValueError):
+        await _send_mockup(db=db, project="ProjB", title="Hero v2", description=None,
+                           content="<p>2</p>", content_type="html", tags=[],
+                           parent=a["id"])
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_auto_folds_on_single_match(db):
+    a = await _send_mockup(db=db, project="P", title="Privacy page — draft 1",
+                           description=None, content="<p>1</p>", content_type="html", tags=[])
+    result = await _send_mockup(db=db, project="P", title="Privacy page — draft 2",
+                                description=None, content="<p>2</p>", content_type="html",
+                                tags=[])
+    assert result["id"] == a["id"]
+    assert result["version"] == 2
+    assert result["folded"] is True
+    assert result["note"] == (
+        "Added as version 2 of 'Privacy page'. "
+        "If this was meant to be a separate mockup, split it out with split_version("
+        f"{a['id']}, 2) or POST /api/mockups/{a['id']}/versions/2/split."
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_no_fold_on_two_matches(db):
+    await _send_mockup(db=db, project="P", title="Privacy page — draft 1", description=None,
+                       content="<p>a</p>", content_type="html", tags=[])
+    # A second design with the same comparison key, created deliberately (fold=False).
+    await _send_mockup(db=db, project="P", title="Privacy page — draft 2", description=None,
+                       content="<p>b</p>", content_type="html", tags=[], fold=False)
+    result = await _send_mockup(db=db, project="P", title="Privacy page — draft 3",
+                                description=None, content="<p>c</p>", content_type="html",
+                                tags=[])
+    assert result["version"] == 1
+    assert result["folded"] is False
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_fold_false_never_folds(db):
+    a = await _send_mockup(db=db, project="P", title="Privacy page — draft 1", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    result = await _send_mockup(db=db, project="P", title="Privacy page — draft 2",
+                                description=None, content="<p>2</p>", content_type="html",
+                                tags=[], fold=False)
+    assert result["id"] != a["id"]
+    assert result["version"] == 1
+    assert result["folded"] is False
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_option_b_does_not_fold_into_option_a(db):
+    a = await _send_mockup(db=db, project="P", title="Hero — option A", description=None,
+                           content="<p>a</p>", content_type="html", tags=[])
+    result = await _send_mockup(db=db, project="P", title="Hero — option B", description=None,
+                                content="<p>b</p>", content_type="html", tags=[])
+    assert result["id"] != a["id"]
+    assert result["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_tags_union_into_design(db):
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=["ui"])
+    result = await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                                content="<p>2</p>", content_type="html", tags=["landing"],
+                                parent=a["id"])
+    assert sorted(result["tags"]) == ["landing", "ui"]
+
+
+# --- get_mockup: versions list, version param (chunk 2) ---
+
+@pytest.mark.asyncio
+async def test_get_mockup_lists_versions_newest_first(db):
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    result = await _get_mockup(db=db, id=sent["id"])
+    assert [v["number"] for v in result["versions"]] == [2, 1]
+    assert result["view_url"].endswith(f"/view/{sent['id']}")
+    assert result["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_mockup_specific_version_view_url(db):
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    result = await _get_mockup(db=db, id=sent["id"], version=1)
+    assert result["view_url"].endswith("/v/1")
+    assert result["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_mockup_alias_shows_pinned_version(db):
+    from app import db as dbm
+
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=sent["id"], number=1)
+    result = await _get_mockup(db=db, id="old-link")
+    assert result["id"] == sent["id"]
+    assert result["version"] == 1
+    assert result["view_url"].endswith("/v/1")
+
+
+@pytest.mark.asyncio
+async def test_get_mockup_alias_with_mismatched_version_raises(db):
+    # fix round 1, Entry 3 item 1: an alias pinned to v1 must not resolve for
+    # a different explicit version.
+    from app import db as dbm
+
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=sent["id"], number=1)
+    with pytest.raises(ValueError, match="not found"):
+        await _get_mockup(db=db, id="old-link", version=2)
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_content_via_alias(db):
+    # fix round 1, Entry 3 item 2: _update_mockup accepts an alias id.
+    from app import db as dbm
+
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=sent["id"], number=1)
+    result = await _update_mockup(db=db, id="old-link", content="<p>2</p>", content_type="html")
+    assert result["id"] == sent["id"]
+    assert result["version"] == 2
+    assert [v["number"] for v in result["versions"]] == [2, 1]
+
+
+@pytest.mark.asyncio
+async def test_tag_mockup_via_alias(db):
+    # fix round 1, Entry 3 item 2: _tag_mockup accepts an alias id.
+    from app import db as dbm
+
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=["ui"])
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=sent["id"], number=1)
+    result = await _tag_mockup(db=db, id="old-link", add=["landing"], remove=["ui"])
+    assert result["id"] == sent["id"]
+    assert result["tags"] == ["landing"]
+
+
+# --- split_version (chunk 2, new tool) ---
+
+@pytest.mark.asyncio
+async def test_split_version_returns_new_design(db):
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    result = await _split_version(db=db, id=sent["id"], version=2)
+    assert result["id"] != sent["id"]
+    assert result["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_split_only_version_raises(db):
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    with pytest.raises(ValueError, match="Cannot split the only version"):
+        await _split_version(db=db, id=sent["id"], version=1)
+
+
+# --- delete_mockup: version param (chunk 2) ---
+
+@pytest.mark.asyncio
+async def test_delete_mockup_specific_version(db):
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    result = await _delete_mockup(db=db, id=sent["id"], version=2)
+    assert result["deleted"] is True
+    after = await _get_mockup(db=db, id=sent["id"])
+    assert [v["number"] for v in after["versions"]] == [1]
+
+
+@pytest.mark.asyncio
+async def test_delete_last_version_raises(db):
+    sent = await _send_mockup(db=db, project="P", title="T", description=None,
+                              content="<p>x</p>", content_type="html", tags=[])
+    with pytest.raises(ValueError, match="Cannot delete the only version"):
+        await _delete_mockup(db=db, id=sent["id"], version=1)
+
+
+@pytest.mark.asyncio
+async def test_delete_last_version_via_mcp_tool_raises_tool_error(client):
+    # `client` (the httpx/ASGI fixture) already runs app_lifespan, which calls
+    # register_tools once against ITS OWN db and keeps it open for the test's
+    # duration. Registering again here (on the shared module-level `mcp`) would
+    # leave stale closures pointing at a since-closed db for whichever test
+    # runs next — see task-2-review.md Minor 7. Reuse the existing registration
+    # instead of mutating the global server ourselves.
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>x</p>", "text/html")},
+        data={"project": "P", "title": "T"},
+    )
+    mockup_id = resp.json()["id"]
+    async with Client(mcp) as mcp_client:
+        with pytest.raises(ToolError):
+            await mcp_client.call_tool("delete_mockup", {"id": mockup_id, "version": 1})
+
+
+# --- set_created_at: version param (chunk 2) ---
+
+@pytest.mark.asyncio
+async def test_set_created_at_on_lowest_version_also_sets_design_created_at(db):
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    await _set_created_at(db=db, id=sent["id"], created_at="1999-01-01T00:00:00+00:00",
+                          version=1)
+    after = await _get_mockup(db=db, id=sent["id"])
+    assert after["created_at"] == "1999-01-01T00:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_set_created_at_on_later_version_rf4(db):
+    # RF-4: backdating v1 past v2 must not disturb version order or latest_at.
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    before = await _get_mockup(db=db, id=sent["id"])
+
+    await _set_created_at(db=db, id=sent["id"], created_at="2099-01-01T00:00:00+00:00",
+                          version=1)
+    after = await _get_mockup(db=db, id=sent["id"])
+    assert [v["number"] for v in after["versions"]] == [2, 1]
+    assert after["latest_at"] == before["latest_at"]
+    assert after["created_at"] == "2099-01-01T00:00:00+00:00"  # v1 is still the lowest version
+
+
+@pytest.mark.asyncio
+async def test_set_created_at_on_non_lowest_version_leaves_design_created_at(db):
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    before = await _get_mockup(db=db, id=sent["id"])
+
+    await _set_created_at(db=db, id=sent["id"], created_at="2050-06-01T00:00:00+00:00",
+                          version=2)
+    after = await _get_mockup(db=db, id=sent["id"])
+    assert after["created_at"] == before["created_at"]  # v2 is not the design's lowest version
+    assert after["latest_at"] == "2050-06-01T00:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_description_survives_mirror_refresh(db):
+    # Regression (I2): a metadata-only description edit is also written to the
+    # latest version, so the next mirror refresh (here: set_created_at) keeps it.
+    sent = await _send_mockup(db=db, project="P", title="Hero v1", description="d1",
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _send_mockup(db=db, project="P", title="Hero v2", description="d2",
+                       content="<p>2</p>", content_type="html", tags=[], parent=sent["id"])
+    edited = await _update_mockup(db=db, id=sent["id"], description="hand-edited")
+    assert edited["description"] == "hand-edited"
+
+    result = await _set_created_at(db=db, id=sent["id"], version=1,
+                                   created_at="2026-01-01T00:00:00+00:00")
+    assert result["description"] == "hand-edited"
+    v1 = await _get_mockup(db=db, id=sent["id"], version=1)
+    assert v1["description"] == "hand-edited"  # design-level field, mirrored
+    from app.db import get_version
+    assert (await get_version(db, sent["id"], 2))["description"] == "hand-edited"
+    assert (await get_version(db, sent["id"], 1))["description"] == "d1"
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_without_changes_is_a_no_op(db):
+    sent = await _send_mockup(db=db, project="P", title="T", description="d",
+                              content="<p>1</p>", content_type="html", tags=[])
+    result = await _update_mockup(db=db, id=sent["id"])
+    assert result["updated_at"] == sent["updated_at"]
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_auto_folds_series_with_two_parentheticals(db):
+    # Regression (M3): the design title base_title("Foo (a) (b) v1") must keep
+    # matching the series, so v3 folds in like v2 did.
+    a = await _send_mockup(db=db, project="P", title="Foo (a) (b) v1", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    v2 = await _send_mockup(db=db, project="P", title="Foo (a) (b) v2", description=None,
+                            content="<p>2</p>", content_type="html", tags=[])
+    assert (v2["id"], v2["folded"]) == (a["id"], True)
+    v3 = await _send_mockup(db=db, project="P", title="Foo (a) (b) v3", description=None,
+                            content="<p>3</p>", content_type="html", tags=[])
+    assert (v3["id"], v3["version"], v3["folded"]) == (a["id"], 3, True)
+
+
+# --- s007 deferred minors ---
+
+async def _hero_with_alias(db):
+    """Design 'Hero' with v1 + v2, and alias 'old-link' pinned to v1."""
+    from app import db as dbm
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                       content="<p>2</p>", content_type="html", tags=[], parent=a["id"])
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=a["id"], number=1)
+    return a["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_mockup_alias_with_wrong_version_says_version_not_found(db):
+    await _hero_with_alias(db)
+    with pytest.raises(versioning.NotFound, match="Version not found: old-link v2"):
+        await _get_mockup(db=db, id="old-link", version=2)
+
+
+@pytest.mark.asyncio
+async def test_set_created_at_by_alias_returns_the_design(db):
+    mid = await _hero_with_alias(db)
+    result = await _set_created_at(db=db, id="old-link", created_at="2025-01-15T12:00:00+00:00")
+    assert result["id"] == mid
+    assert result["view_url"].endswith(f"/view/{mid}")  # the design, not the alias's pinned v1
+    assert result["created_at"] == "2025-01-15T12:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_parent_deleted_after_resolve_is_unknown_parent(db, monkeypatch):
+    async def resolves_to_gone(db, id, number=None):
+        return ("gone", 1)
+    monkeypatch.setattr(versioning, "resolve", resolves_to_gone)
+    with pytest.raises(versioning.UnknownParent, match="Unknown parent: p1"):
+        await _send_mockup(db=db, project="P", title="T", description=None,
+                           content="<p>x</p>", content_type="html", tags=[], parent="p1")
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_parent_deleted_before_add_version_is_unknown_parent(db, monkeypatch):
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+
+    async def gone(*args, **kwargs):
+        raise versioning.NotFound("Mockup not found: x")
+    monkeypatch.setattr(versioning, "add_version", gone)
+    with pytest.raises(versioning.UnknownParent):
+        await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                           content="<p>2</p>", content_type="html", tags=[], parent=a["id"])
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_fold_target_deleted_meanwhile_creates_design(db, monkeypatch):
+    async def stale_target(db, *, project_slug, title):
+        return "gone"
+    monkeypatch.setattr(versioning, "find_fold_target", stale_target)
+    result = await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                                content="<p>2</p>", content_type="html", tags=[])
+    assert result["folded"] is False and result["version"] == 1
+    assert result["id"] != "gone"
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_parent_other_project_adds_no_version(db):
+    a = await _send_mockup(db=db, project="ProjA", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    with pytest.raises(ValueError, match="different project"):
+        await _send_mockup(db=db, project="ProjB", title="Hero v2", description=None,
+                           content="<p>2</p>", content_type="html", tags=[], parent=a["id"])
+    got = await _get_mockup(db=db, id=a["id"])
+    assert got["version_count"] == 1 and [v["number"] for v in got["versions"]] == [1]
+
+
+@pytest.mark.asyncio
+async def test_auto_fold_unions_tags(db):
+    a = await _send_mockup(db=db, project="P", title="Privacy page — draft 1",
+                           description=None, content="<p>1</p>", content_type="html",
+                           tags=["ui", "legal"])
+    result = await _send_mockup(db=db, project="P", title="Privacy page — draft 2",
+                                description=None, content="<p>2</p>", content_type="html",
+                                tags=["legal", "mobile"])
+    assert result["id"] == a["id"] and result["folded"] is True
+    assert result["tags"] == ["legal", "mobile", "ui"]
+
+
+@pytest.mark.asyncio
+async def test_get_mockup_design_deleted_after_resolve_is_not_found(db, monkeypatch):
+    async def resolves_to_gone(db, id, number=None):
+        return ("gone", 1)
+    monkeypatch.setattr(versioning, "resolve", resolves_to_gone)
+    with pytest.raises(versioning.NotFound):
+        await _get_mockup(db=db, id="some-alias")
+
+
+@pytest.mark.asyncio
+async def test_update_with_content_replaces_tags_in_one_write(db):
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=["old"])
+    result = await _update_mockup(db=db, id=a["id"], content="<p>2</p>", tags=["new"])
+    assert result["tags"] == ["new"] and result["version"] == 2

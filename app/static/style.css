@@ -103,121 +103,268 @@ body {
   margin-left: calc(-1 * var(--sidebar-w));
 }
 
-/* -- Brand -- */
-.sidebar-brand {
-  padding: 20px 20px 16px;
-  border-bottom: 1px solid var(--border-dim);
+/* -- Brand bar -- */
+/* The sidebar's title bar, at the same height as the viewer bar beside it
+   (var(--meta-h)) so the two line up. "Glow + readout" treatment: a radial
+   cyan glow behind the mark, a faint left-to-right wash, and a mono readout
+   (design count + version) using the bar's spare width. */
+.brand-bar {
+  height: var(--meta-h);
   flex-shrink: 0;
-}
-
-.sidebar-brand h1 {
-  font-family: var(--font-heading);
-  font-size: 18px;
-  font-weight: 600;
-  font-style: normal;
-  color: var(--text-primary);
-  letter-spacing: -0.03em;
-  line-height: 1.2;
-}
-
-.sidebar-brand .brand-sub-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 4px;
+  gap: 10px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--border-dim);
+  position: relative;
+  overflow: hidden;
+  background-image:
+    radial-gradient(120px 60px at 27px 50%, rgba(34, 211, 238, .16), transparent 70%),
+    linear-gradient(90deg, rgba(34, 211, 238, .05), transparent 55%);
 }
 
-.sidebar-brand .brand-sub {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 400;
+.frame-mark {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  stroke: var(--accent);
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.frame-mark .frame-fill {
+  fill: var(--accent);
+  stroke: none;
+}
+
+.brand-word {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.brand-word em {
+  font-style: normal;
   color: var(--text-ghost);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.brand-guide-link {
-  font-family: var(--font-mono);
-  font-size: 9px;
   font-weight: 500;
-  letter-spacing: 0.04em;
+}
+
+.brand-readout {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
   color: var(--text-ghost);
-  text-decoration: none;
-  padding: 2px 6px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.brand-readout b {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.brand-guide-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-dim);
+  color: var(--text-ghost);
   transition: all 0.12s ease;
 }
 
-.brand-guide-link:hover {
+.brand-guide-btn svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.brand-guide-btn:hover {
   color: var(--accent);
-  border-color: var(--accent-dim);
   background: var(--accent-glow);
 }
 
-/* -- Projects Section -- */
-.sidebar-projects {
+/* -- Scope row -- */
+/* Replaces the full project list: a picker button for the current scope
+   (All projects, or one project) and a favorites toggle. The picker opens
+   a filterable popover; picking a project (or "All projects") behaves like
+   the old project list did. */
+.scope-wrap {
+  position: relative;
   padding: 12px 12px 0;
-  min-height: 48px;   /* keep the label visible; scroll the rest on short viewports */
-  overflow-y: auto;   /* projects list scrolls instead of pushing the feed off-screen */
+  flex-shrink: 0;
 }
 
-.section-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
+.scope-row {
+  display: flex;
+  gap: 6px;
+}
+
+.scope-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+
+.scope-btn:hover,
+.scope-btn[aria-expanded="true"] {
+  border-color: var(--accent-dim);
+}
+
+.scope-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
   color: var(--text-ghost);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 0 8px 8px;
 }
 
-.project-list {
+.fav-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  padding: 0 10px;
+  color: var(--star);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+}
+
+.fav-toggle .fav-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost);
+}
+
+.fav-toggle[aria-pressed="true"] {
+  background: var(--star-glow);
+  border-color: rgba(251, 191, 36, .35);
+}
+
+.scope-pop {
+  display: none;
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 100%;
+  margin-top: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  z-index: 10;
+  padding: 6px;
+}
+
+.scope-pop.open {
+  display: block;
+}
+
+.scope-filter {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.scope-filter:focus {
+  border-color: var(--accent-dim);
+}
+
+.scope-list {
   list-style: none;
+  max-height: 340px;
+  overflow-y: auto;
 }
 
-.project-item {
+.scope-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 7px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
   transition: background 0.12s ease, color 0.12s ease;
   user-select: none;
 }
 
-.project-item:hover {
+.scope-item:hover {
   background: var(--bg-hover);
 }
 
-.project-item.active {
+.scope-item.active {
   background: var(--accent-glow);
-}
-
-.project-item.active .project-name {
   color: var(--accent);
 }
 
-.project-item.active .project-count {
+.scope-item-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost);
+}
+
+.scope-item.active .scope-item-count {
   color: var(--accent-dim);
 }
 
-.project-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  transition: color 0.12s ease;
+.scope-divider {
+  height: 1px;
+  background: var(--border-dim);
+  margin: 6px 4px;
 }
 
-.project-count {
+.scope-empty {
+  padding: 10px;
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 400;
+  font-size: 11px;
   color: var(--text-ghost);
-  min-width: 20px;
-  text-align: right;
-  transition: color 0.12s ease;
+  text-align: center;
 }
 
 /* -- Filter -- */
@@ -342,11 +489,12 @@ body {
   85%, 100% { transform: translateX(var(--scroll-dist, -50px)); }
 }
 
+/* On the title line only (not centred over the row), so the meta line's
+   version chip and time are never covered by the revealed buttons. */
 .feed-actions {
   position: absolute;
   right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 6px;
   display: flex;
   gap: 2px;
   flex-shrink: 0;
@@ -380,19 +528,26 @@ body {
 
 @media (hover: none) {
   .feed-action-btn { opacity: 0.6; }
-  /* The actions are always visible here, so reserve their width (8px inset +
-     4 × 24px buttons + 3 × 2px gaps, plus breathing room) instead of letting
-     them sit over the title and meta line. */
-  .feed-item { padding-right: 114px; }
-  .sidebar-feed .feed-item.has-fav .feed-title { padding-right: 0; }
+  /* The actions are always visible here, so the title reserves their width
+     (4 × 24px buttons + 3 × 2px gaps). They sit on the title line only, so the
+     meta line keeps the row's full width: a project badge beside a version
+     chip no longer shrinks to one letter. */
+  .sidebar-feed .feed-item .feed-title,
+  .sidebar-feed .feed-item.has-fav .feed-title { padding-right: 102px; }
 }
 
-/* Visible focus ring for keyboard users on the otherwise non-semantic,
-   click-built interactive elements. */
+/* The app's cyan focus ring for keyboard users: on the non-semantic,
+   click-built interactive elements, and (R19b) on real <button>/<a>
+   elements that would otherwise show the browser's default ring. */
 .feed-item:focus-visible,
-.project-item:focus-visible,
+.scope-item:focus-visible,
 .feed-action-btn:focus-visible,
-.sort-opt:focus-visible {
+.sort-opt:focus-visible,
+.ver-row:focus-visible,
+.ver-split:focus-visible,
+.scope-btn:focus-visible,
+.fav-toggle:focus-visible,
+.brand-guide-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -473,6 +628,154 @@ body {
   color: var(--text-ghost);
 }
 
+/* ============================================================
+   VERSION CHIP + HISTORY LIST (feed rows)
+   ============================================================ */
+/* "N versions" chip — only rendered when a design has 2+ versions. Toggles
+   the .ver-list below the row without changing the selection. */
+.ver-chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--accent-dim);
+  background: transparent;
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.ver-chip:hover,
+.ver-chip.open {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: var(--accent-glow);
+}
+
+/* The row's version history, inserted as a sibling right after .feed-item
+   the first time its chip is opened (see toggleVersionList in gallery.html). */
+.ver-list {
+  margin: 2px 0 4px 16px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.ver-list-loading {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost);
+  padding: 6px 8px;
+}
+
+.ver-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 0.12s ease;
+}
+
+.ver-row:hover {
+  background: var(--bg-hover);
+}
+
+.ver-row.active {
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.ver-row-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost);
+  width: 22px;
+  flex-shrink: 0;
+}
+
+.ver-row.active .ver-row-num {
+  color: var(--accent-dim);
+}
+
+.ver-row-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ver-row-latest {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--type-svg);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: 3px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.ver-row-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-ghost);
+  flex-shrink: 0;
+}
+
+/* Split: hidden until the row is hovered/focused, always visible on touch
+   (no hover to reveal it there), matching .feed-action-btn's convention. */
+.ver-split {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-ghost);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.ver-row:hover .ver-split,
+.ver-row:focus-within .ver-split,
+.ver-split:focus-visible {
+  display: flex;
+}
+
+.ver-split:hover {
+  color: var(--accent);
+  background: var(--bg-active);
+}
+
+.ver-split.failed {
+  color: var(--type-jpg);
+}
+
+.ver-split svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (hover: none) {
+  .ver-split { display: flex; }
+}
+
 /* Feed loading / empty states */
 .feed-status {
   text-align: center;
@@ -546,6 +849,60 @@ body {
   z-index: 2;
 }
 
+/* -- Bar left block (menu toggle + collapsed-bar eyebrow) --
+   #bar-left / #bar-left-row / #bar-content are structural wrappers so the
+   collapsed-bar CSS below can reflow them into two tiers. In the normal
+   (expanded-sidebar) layout they must be invisible to layout entirely —
+   `display: contents` lets their children become plain flex items of
+   .meta-bar directly, which reproduces the pre-1.5.0 flat DOM exactly:
+   [menu-toggle (absolute, out of flow)], star, copy, pop-out, sep, title,
+   viewport/fullscreen, info. See COLLAPSED BAR below for the other state. */
+.bar-left,
+.bar-left-row,
+.bar-content {
+  display: contents;
+}
+
+.bar-eyebrow {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  padding-left: 6px;
+}
+
+.bar-eyebrow span {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  white-space: nowrap;
+}
+
+.bar-eyebrow span b {
+  color: var(--accent-dim);
+  font-weight: 600;
+}
+
+.bar-eyebrow .frame-mark {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.2;
+}
+
+/* Flexible title+pill pair: the wrapper is the flex:1 item so the pill sits
+   right after the title text (not pushed to the bar's far right by a
+   separately flex:1 title); the title still ellipsizes inside it. */
+.meta-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px 0 2px;
+}
+
 .meta-title {
   font-size: 13px;
   font-weight: 600;
@@ -553,9 +910,12 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  /* Shrink (and ellipsize) to fit, but never grow: growth is what pushed the
+     pill to the wrapper's far edge (fix round 2) — the WRAP is the flex:1
+     item; the title must only ever be as wide as its own text (or the
+     wrap's available room, whichever is smaller). */
+  flex: 0 1 auto;
   min-width: 0;
-  padding: 0 8px 0 2px;
   letter-spacing: -0.01em;
 }
 
@@ -736,6 +1096,64 @@ body {
   transition: opacity 0.28s var(--ease-out);
 }
 
+/* ============================================================
+   COLLAPSED BAR — desktop sidebar collapsed, or phone drawer closed
+   ============================================================
+   The viewer bar stays 48px and nothing below it moves. The sidebar's
+   brand bar disappears with the sidebar; its branding reappears as a
+   small eyebrow at the top-left, above one row of buttons (menu, star,
+   copy, pop-out). From the separator on, title/version/right-hand icons
+   stay a single row, just vertically centred in the fuller 48px. */
+.shell.sb-collapsed .meta-bar {
+  padding: 0 12px;
+  background-image: radial-gradient(140px 26px at 30px 0%, rgba(34, 211, 238, .12), transparent 75%);
+}
+
+.shell.sb-collapsed .bar-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  height: 100%;
+}
+
+.shell.sb-collapsed .bar-left-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.shell.sb-collapsed .bar-content {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.shell.sb-collapsed .bar-eyebrow {
+  display: flex;
+}
+
+.shell.sb-collapsed .menu-toggle {
+  position: static;
+  width: 28px;
+  height: 26px;
+}
+
+.shell.sb-collapsed .menu-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.shell.sb-collapsed .bar-left-row .meta-star,
+.shell.sb-collapsed .bar-left-row .meta-icon-btn {
+  height: 26px;
+}
+
+.shell.sb-collapsed .meta-title {
+  font-size: 15px;
+}
+
 @media (max-width: 720px) {
   /* Sidebar leaves the flex flow and becomes a drawer sliding over the
      viewer, so the viewer gets the full width by default. */
@@ -764,13 +1182,63 @@ body {
     pointer-events: auto;
   }
 
-  /* Tighten the bar and shed the metadata that can't fit a phone width —
-     keep the star, title, fullscreen, and pop-out. (The hamburger and its
-     left padding are already applied at every viewport.) */
-  .meta-bar { gap: 2px; }
-  /* Scoped under .meta-bar so these win over the later single-class base
-     rules regardless of source order. */
-  .meta-bar .meta-sep { display: none; }
+  /* Drawer open: the brand bar and scope row live inside the drawer itself,
+     so the viewer bar behind it (mostly hidden under the scrim) just keeps
+     its plain tightened look — gap:2px, no separator, current layout. */
+  .shell.nav-open .meta-bar { gap: 2px; }
+  .shell.nav-open .meta-bar .meta-sep { display: none; }
+
+  /* Drawer closed (the default mobile state): same collapsed-bar treatment
+     as the desktop-collapsed sidebar above. */
+  .shell:not(.nav-open) .meta-bar {
+    padding: 0 12px;
+    background-image: radial-gradient(140px 26px at 30px 0%, rgba(34, 211, 238, .12), transparent 75%);
+  }
+
+  .shell:not(.nav-open) .bar-left {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    height: 100%;
+  }
+
+  .shell:not(.nav-open) .bar-left-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .shell:not(.nav-open) .bar-content {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .shell:not(.nav-open) .bar-eyebrow {
+    display: flex;
+  }
+
+  .shell:not(.nav-open) .menu-toggle {
+    position: static;
+    width: 28px;
+    height: 26px;
+  }
+
+  .shell:not(.nav-open) .menu-toggle svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .shell:not(.nav-open) .bar-left-row .meta-star,
+  .shell:not(.nav-open) .bar-left-row .meta-icon-btn {
+    height: 26px;
+  }
+
+  .shell:not(.nav-open) .meta-title {
+    font-size: 15px;
+  }
 }
 
 /* On very short viewports the 50vh feed floor + fixed brand/filter can exceed
@@ -779,16 +1247,6 @@ body {
   .sidebar-feed { min-height: 0; }
 }
 
-/* ============================================================
-   FAVORITES SIDEBAR ITEM
-   ============================================================ */
-/* Favorites pseudo-project */
-.project-item.favorites .project-name { color: var(--star); display: flex; align-items: center; gap: 7px; }
-.project-item.favorites .fav-star { font-size: 12px; line-height: 1; }
-.project-item.favorites.active { background: var(--star-glow); }
-.project-item.favorites.active .project-name,
-.project-item.favorites.active .project-count { color: var(--star); }
-.project-divider { height: 1px; background: var(--border-dim); margin: 8px 8px; }
 
 /* ============================================================
    SEARCH ICON + SORT SEGMENTED CONTROL
@@ -884,6 +1342,23 @@ body {
 }
 .meta-bar .meta-star:hover { color: var(--star); transform: scale(1.15); }
 .meta-bar .meta-star.starred { color: var(--star); }
+
+/* Version pill after the title — only rendered when a design has 2+ versions.
+   Cyan on the latest, amber ("old") when pinned to an earlier version. */
+.ver-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  border-radius: 3px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.ver-pill.old {
+  color: var(--star);
+  border-color: rgba(251, 191, 36, 0.35);
+}
 
 /* Constrain the iframe width for viewport preview */
 .viewer.vp-mobile .viewer-iframe  { width: 375px; }

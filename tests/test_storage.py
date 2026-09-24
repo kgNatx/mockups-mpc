@@ -109,3 +109,73 @@ def test_write_binary_invalid_base64_raises(data_dir):
         write_mockup_file("test-project", "badb64", "png", "!!!notbase64!!!")
 
 
+
+
+def test_failed_write_leaves_no_partial_file(data_dir, monkeypatch):
+    from app import storage
+    tmp_path = data_dir
+    real_open = open
+
+    class HalfWriter:
+        def __init__(self, f):
+            self.f = f
+
+        def write(self, data):
+            self.f.write(data[:3])
+            raise OSError("disk full")
+
+        def close(self):
+            self.f.close()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.f.close()
+
+    monkeypatch.setattr(storage, "open", lambda p, m: HalfWriter(real_open(p, m)), raising=False)
+    with pytest.raises(OSError):
+        storage.write_mockup_file("proj", "m1", "html", "<p>hello</p>",
+                                  rel_path="proj/m1/v2.html", exclusive=True)
+    assert not (tmp_path / "proj" / "m1" / "v2.html").exists()
+
+
+def test_exclusive_write_never_removes_an_existing_file(data_dir):
+    from app import storage
+    tmp_path = data_dir
+    storage.write_mockup_file("proj", "m1", "html", "<p>a</p>", rel_path="proj/m1/v2.html")
+    with pytest.raises(FileExistsError):
+        storage.write_mockup_file("proj", "m1", "html", "<p>b</p>",
+                                  rel_path="proj/m1/v2.html", exclusive=True)
+    assert (tmp_path / "proj" / "m1" / "v2.html").read_text() == "<p>a</p>"
+
+
+def test_failed_close_leaves_no_partial_file(data_dir, monkeypatch):
+    from app import storage
+    real_open = open
+
+    class FailsOnClose:
+        def __init__(self, f):
+            self.f = f
+            self.closes = 0
+
+        def write(self, data):
+            return self.f.write(data)
+
+        def close(self):
+            self.closes += 1
+            self.f.close()
+            if self.closes == 1:
+                raise OSError("No space left on device")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
+    monkeypatch.setattr(storage, "open", lambda p, m: FailsOnClose(real_open(p, m)), raising=False)
+    with pytest.raises(OSError):
+        storage.write_mockup_file("proj", "m1", "html", "<p>small</p>",
+                                  rel_path="proj/m1/v2.html", exclusive=True)
+    assert not (data_dir / "proj" / "m1" / "v2.html").exists()

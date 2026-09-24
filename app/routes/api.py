@@ -1,14 +1,29 @@
 import base64
 from pathlib import PurePosixPath
 
-from fastapi import APIRouter, Form, Request, UploadFile
+from fastapi import APIRouter, Form, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from app import versioning
 from app.db import get_mockup, list_mockups, list_projects, set_favorite, count_favorites
 from app.storage import TEXT_TYPES, MAX_CONTENT_SIZE, slugify_project
-from app.mcp_server import _send_mockup, _delete_mockup
+from app.mcp_server import _send_mockup, _get_mockup, _delete_mockup, _split_version
 
 router = APIRouter(prefix="/api")
+
+_FALSY_FOLD = {"false", "0", "no"}
+
+
+def _parse_fold(value: str | None) -> bool:
+    return value is None or value.strip().lower() not in _FALSY_FOLD
+
+
+def _versioning_error_status(exc: ValueError) -> int:
+    if isinstance(exc, versioning.NotFound):
+        return 404
+    if isinstance(exc, versioning.Conflict):
+        return 409
+    return 400
 
 EXT_TO_TYPE = {
     ".html": "html",
@@ -35,11 +50,28 @@ async def api_list_mockups(request: Request, project: str | None = None,
     return rows
 
 @router.get("/mockups/{mockup_id}")
-async def api_get_mockup(request: Request, mockup_id: str):
-    row = await get_mockup(request.app.state.db, mockup_id)
-    if row is None:
+async def api_get_mockup(request: Request, mockup_id: str, v: int | None = None):
+    try:
+        return await _get_mockup(db=request.app.state.db, id=mockup_id, version=v)
+    except ValueError:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    return row
+
+
+@router.post("/mockups/{mockup_id}/versions/{number}/split")
+async def api_split_version(request: Request, mockup_id: str, number: int):
+    try:
+        return await _split_version(db=request.app.state.db, id=mockup_id, version=number)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=_versioning_error_status(e))
+
+
+@router.delete("/mockups/{mockup_id}/versions/{number}")
+async def api_delete_version(request: Request, mockup_id: str, number: int):
+    try:
+        await _delete_mockup(db=request.app.state.db, id=mockup_id, version=number)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=_versioning_error_status(e))
+    return Response(status_code=204)
 
 class FavoriteBody(BaseModel):
     favorite: bool
@@ -47,10 +79,15 @@ class FavoriteBody(BaseModel):
 
 @router.put("/mockups/{mockup_id}/favorite")
 async def api_set_favorite(request: Request, mockup_id: str, body: FavoriteBody):
-    ok = await set_favorite(request.app.state.db, mockup_id, body.favorite)
+    # An alias (a folded-away id) stars the design it now belongs to.
+    resolved = await versioning.resolve(request.app.state.db, mockup_id)
+    if resolved is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    design_id, _ = resolved
+    ok = await set_favorite(request.app.state.db, design_id, body.favorite)
     if not ok:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    row = await get_mockup(request.app.state.db, mockup_id)
+    row = await get_mockup(request.app.state.db, design_id)
     return row
 
 
@@ -78,6 +115,8 @@ async def api_upload(
     title: str = Form(...),
     description: str | None = Form(None),
     tags: str | None = Form(None),
+    parent: str | None = Form(None),
+    fold: str | None = Form(None),
 ):
     """Upload a mockup file directly. More token-efficient than send_mockup
     since file content doesn't flow through the model context."""
@@ -126,7 +165,11 @@ async def api_upload(
             content=content,
             content_type=content_type,
             tags=tag_list,
+            parent=parent,
+            fold=_parse_fold(fold),
         )
+    except versioning.UnknownParent as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     return result

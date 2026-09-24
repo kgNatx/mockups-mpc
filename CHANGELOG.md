@@ -6,8 +6,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 
 ## [Unreleased]
 
+### Added
+- Mockups can now hold version history. `POST /api/upload` and `send_mockup` gain `parent=<id>` (add a version to an existing design instead of creating a new one) and `fold=false` (opt out of auto-fold for that upload). A specific version is directly linkable at `/view/{id}/v/{n}`.
+- New MCP tool `split_version(id, version)` pulls one version back out into its own standalone design — reverses a fold, reusing the old id if it has one.
+- `delete_mockup` (MCP) and `DELETE /api/mockups/{id}/versions/{n}` (API) accept a `version` to delete just that version instead of the whole design; deleting the last remaining version is refused.
+- `get_mockup` and `GET /api/mockups/{id}` now include a `versions` list (number, title, created_at, content_type, view_url per version).
+- Opt-in `python -m app.fold --dry-run` / `--apply` command to merge existing near-duplicate mockups — uploaded before this release, or with `fold=false` — into version history. It never runs on its own; see the README's Versions section.
+- `POST /api/mockups/{id}/versions/{n}/split` — the HTTP form of `split_version`.
+- `set_created_at` gains a `version` parameter to change one version's date (omit it for the latest). Changing the first version's date also moves the design's created date.
+- Gallery deep link to one version: `/?mockup={id}&v={n}`. `/?mockup={id}` alone follows the latest version.
+- Search (`q` on `GET /api/mockups` and the gallery search box) also matches version titles, so a folded design is findable by any of its drafts' titles.
+- An auto-folded upload's response includes `folded: true` and a `note`: `Added as version {n} of '{design title}'. If this was meant to be a separate mockup, split it out with split_version(id, {n}) or POST /api/mockups/{id}/versions/{n}/split.`
+- Gallery UI rebuild for versions: a brand bar at the top of the sidebar; a scope picker (all projects or one project, with a favorites toggle beside it) in place of the project list; with the sidebar collapsed, a small brand "eyebrow" above a compact row of viewer-bar buttons, so the 48px bar keeps its height; a `N versions` chip on feed rows that opens the version history; a version pill in the viewer header (`v3 · latest`, or `v2 of v5` when viewing an older version: it names the latest number, since deleted versions leave gaps); and a split action on each version in the history. A viewer that follows the latest moves to a new version when one lands; a viewer pinned to an older version keeps it and updates its pill. A link to a version that no longer exists opens the latest instead of an empty viewer.
+- The in-app Setup Guide covers versions (`parent=`, auto-fold, `fold=false`, split, version links) and lists all eight MCP tools. Its `CLAUDE.md` snippet gains the `-F parent=<id>` line.
+- Existing installs get the current Setup Guide: on startup, when the shipped guide differs from the stored one, it is added as a new version of the "Setup Guide" design in the "Mockups MPC" project. A deleted or renamed guide, or a guide version you added yourself, is left alone. The new guide version is dated at startup, so after an upgrade that changes the guide it appears at the top of the feed, and "Mockups MPC" appears at the top of the project list.
+- Migration: on first startup after upgrading, every existing mockup gets a v1 automatically. Nothing merges and the list looks identical after upgrade; running it again (or restarting) is a no-op.
+
+### Changed
+- **Behaviour change for tool callers:** `update_mockup` with `content` now adds a new version instead of overwriting the current one and its file. Metadata-only updates (title, description, tags) are unchanged.
+- Auto-fold is on by default: uploading a mockup whose title matches exactly one existing design's title once trailing iteration markers are stripped (`v2`, `draft 3`, `rev 2`, `r5`, or a bare trailing number — e.g. "Screen 1" / "Screen 2") adds it as a new version of that design instead of creating a separate one. Pass `-F fold=false` (or `fold=False` to `send_mockup`) to always create a new design. Variant markers (`option B`, `variant C`, a standalone trailing letter) are never folded together.
+- Gallery "newest" sort and `GET /api/projects` order now use each design's latest version time, not its original upload time. The feed's date headers and row times follow the same time ("Oldest" still uses the original upload time).
+- Caveat: splitting a version out of a series leaves two designs with the same base title, so later uploads in that series no longer auto-fold (auto-fold needs exactly one match) and each creates a new design. Use `parent=<id>` to add to a specific design, or `fold=false` to make the new-design choice explicit.
+
 ### Fixed
-- On touch screens the feed row's always-visible action buttons no longer sit over the title and meta line; the row reserves their width. The meta line stays on one line at every width, with a long project badge truncated by an ellipsis instead of wrapping.
+- On touch screens the feed row's always-visible action buttons no longer sit over the title and meta line: they sit on the title line, which reserves their width, so the meta line keeps the full row width. The meta line stays on one line at every width, with a long project badge truncated by an ellipsis instead of wrapping.
+- With more than 50 mockups, rows loaded by scrolling the feed no longer disappear a few seconds later. The auto-refresh compared a longer probe against a shorter one, saw a change, and reloaded the first page.
+- A mockup added in the first few seconds after the gallery loads is now picked up by the auto-refresh (it used to wait for some later change).
+- The gallery and popped-out mockups have a favicon (`/favicon.ico` returned 404).
 
 ## [1.4.3] - 2026-09-23
 

@@ -11,6 +11,20 @@ async def test_gallery_loads(client):
 
 
 @pytest.mark.asyncio
+async def test_gallery_has_compact_sidebar_markup(client):
+    # The compact sidebar (brand bar + scope picker) replaces the old
+    # brand block + full project list. The old project list markup must
+    # be gone; the new brand bar, scope picker, and collapsed-bar eyebrow
+    # must be present.
+    resp = await client.get("/")
+    assert resp.status_code == 200
+    assert 'class="brand-bar"' in resp.text
+    assert 'id="scope-btn"' in resp.text
+    assert 'class="bar-eyebrow"' in resp.text
+    assert 'id="project-list"' not in resp.text
+
+
+@pytest.mark.asyncio
 async def test_gallery_stylesheet_is_cache_busted(client):
     # The stylesheet href must carry a ?v=<version> query so each release busts
     # the browser cache; no unversioned reference should remain.
@@ -96,3 +110,157 @@ async def test_view_image_has_no_sandbox_csp(client):
     resp = await client.get(f"/view/{vid}")
     assert resp.status_code == 200
     assert "content-security-policy" not in resp.headers
+
+
+# --- versioned /view routes (chunk 2) ---
+
+@pytest.mark.asyncio
+async def test_view_id_serves_latest_and_v_n_serves_that_version(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>v2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+    resp = await client.get(f"/view/{mid}")
+    assert resp.text == "<p>v2</p>"
+    resp = await client.get(f"/view/{mid}/v/1")
+    assert resp.text == "<p>v1</p>"
+
+
+@pytest.mark.asyncio
+async def test_view_unknown_version_returns_404(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    resp = await client.get(f"/view/{mid}/v/99")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_view_alias_serves_pinned_version(client):
+    from app.db import init_db, insert_alias, transaction
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id="old-link", mockup_id=mid, number=1)
+    await db.close()
+
+    resp = await client.get("/view/old-link")
+    assert resp.status_code == 200
+    assert resp.text == "<p>v1</p>"
+
+
+@pytest.mark.asyncio
+async def test_view_serves_each_version_headers_independently_rf2(client):
+    # RF-2: v1 is html (sandboxed), v2 is png (no CSP). Each URL must reflect
+    # its OWN version's content type and headers, not the design's mirror.
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<h1>v1</h1>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+
+    resp = await client.get(f"/view/{mid}")
+    assert resp.headers["content-type"].startswith("image/png")
+    assert "content-security-policy" not in resp.headers
+
+    resp = await client.get(f"/view/{mid}/v/1")
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "sandbox" in resp.headers["content-security-policy"]
+    assert resp.headers["x-content-type-options"] == "nosniff"
+
+
+# --- alias id + mismatched explicit version (fix round 1, Entry 3 item 1) ---
+
+@pytest.mark.asyncio
+async def test_view_alias_with_mismatched_version_returns_404(client):
+    # An alias is pinned to one version (spec §7): asking for a DIFFERENT
+    # version through it must 404, not silently serve the pinned file.
+    from app.db import init_db, insert_alias, transaction
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>v2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id="old-link", mockup_id=mid, number=1)
+    await db.close()
+
+    resp = await client.get("/view/old-link/v/2")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_view_alias_with_matching_version_returns_200(client):
+    from app.db import init_db, insert_alias, transaction
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id="old-link", mockup_id=mid, number=1)
+    await db.close()
+
+    resp = await client.get("/view/old-link/v/1")
+    assert resp.status_code == 200
+    assert resp.text == "<p>v1</p>"
+
+
+@pytest.mark.asyncio
+async def test_view_svg_version_is_sandboxed(client):
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.svg", svg, "image/svg+xml")},
+        data={"project": "Sec", "title": "Icon"},
+    )
+    vid = resp.json()["id"]
+    resp = await client.get(f"/view/{vid}/v/1")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/svg+xml")
+    assert "sandbox" in resp.headers["content-security-policy"]
+
+
+@pytest.mark.asyncio
+async def test_favicon_is_served(client):
+    resp = await client.get("/favicon.ico")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/svg+xml")
+    resp = await client.get("/")
+    assert '<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">' in resp.text
+    resp = await client.get("/static/favicon.svg")
+    assert resp.status_code == 200

@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mockups MPC</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/style.css?v={{ version }}">
 </head>
 <body>
@@ -11,17 +12,33 @@
 
     <!-- ===== SIDEBAR ===== -->
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand">
-        <h1>Mockups MPC</h1>
-        <div class="brand-sub-row">
-          <div class="brand-sub">Design Artifacts</div>
-          <a class="brand-guide-link" id="guide-link" href="#" style="display:none">Setup Guide</a>
-        </div>
+      <div class="brand-bar">
+        <svg class="frame-mark" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M2.5 9h19"/><rect class="frame-fill" x="6" y="12" width="7" height="5" rx="1"/></svg>
+        <span class="brand-word">Mockups <em>MPC</em></span>
+        <span class="brand-readout"><b id="brand-count">0</b> designs &middot; v{{ version }}</span>
+        <a class="brand-guide-btn" id="guide-link" href="#" style="display:none" title="Setup Guide" aria-label="Setup Guide">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.01"/></svg>
+        </a>
       </div>
 
-      <div class="sidebar-projects">
-        <div class="section-label">Projects</div>
-        <ul class="project-list" id="project-list"></ul>
+      <div class="scope-wrap">
+        <div class="scope-row">
+          <button class="scope-btn" id="scope-btn" type="button" aria-haspopup="true" aria-expanded="false">
+            <span class="scope-name" id="scope-name">All projects</span>
+            <span class="scope-meta"><span id="scope-count">0</span> &#9662;</span>
+          </button>
+          <button class="fav-toggle" id="fav-toggle" type="button" aria-pressed="false" title="Favorites">
+            <span class="fav-star">&#9733;</span><span id="fav-count">0</span>
+          </button>
+        </div>
+        <div class="scope-pop" id="scope-pop">
+          <input
+            type="text" class="scope-filter" id="scope-filter"
+            placeholder="Filter projects&hellip;"
+            autocomplete="off" spellcheck="false"
+          >
+          <ul class="scope-list" id="scope-list"></ul>
+        </div>
       </div>
 
       <div class="sidebar-filter">
@@ -47,12 +64,22 @@
 
     <!-- ===== MAIN VIEWER ===== -->
     <main class="main">
-      <button class="menu-toggle" id="menu-toggle" type="button"
-              aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
-        <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
       <div class="meta-bar empty" id="meta-bar">
-        <span class="meta-hint">Select a mockup to preview</span>
+        <div class="bar-left" id="bar-left">
+          <div class="bar-eyebrow">
+            <svg class="frame-mark" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M2.5 9h19"/><rect class="frame-fill" x="6" y="12" width="7" height="5" rx="1"/></svg>
+            <span>Mockups&middot;<b>MPC</b></span>
+          </div>
+          <div class="bar-left-row" id="bar-left-row">
+            <button class="menu-toggle" id="menu-toggle" type="button"
+                    aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
+              <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="bar-content" id="bar-content">
+          <span class="meta-hint">Select a mockup to preview</span>
+        </div>
       </div>
       <div class="viewer" id="viewer">
         <div class="viewer-empty">
@@ -85,21 +112,58 @@
     mockups: [],
     activeProject: null,   // null = all, FAVORITES = favorites filter, else a project slug
     activeMockupId: null,
+    activeVersion: null,   // number = pinned to that version, null = follow latest
     filterText: "",
     sort: "newest",
     favoritesCount: 0,
     offset: 0,
     limit: 50,
     loading: false,
-    exhausted: false
+    loadFailed: false,     // the last feed load failed: the poll reloads until one succeeds
+    exhausted: false,
+    scopeFilterText: ""
   };
 
+  // The full mockup detail (design + versions) behind the current viewer/meta
+  // bar render, when known — kept so a re-render triggered by something that
+  // only has a feed-row summary (e.g. a favorite toggle) never has to drop
+  // down to a shallower object and lose the versions list.
+  var activeMockupDetail = null;
+
+  // Version lists fetched per design id (`/api/mockups/{id}`), for the feed
+  // row's version chip. Cleared on every feed reload (not on infinite-scroll
+  // append), and pruned to the loaded rows on every render.
+  var versionsCache = {};
+
+  // Design ids whose version history is open. Every feed render tears the
+  // rows down (see renderFeed), so this — not the DOM — is what says which
+  // lists to reopen afterwards.
+  var openVersionLists = {};
+
+  // Bumped on every fetchAndDisplay call, captured at call time. Two clicks
+  // in quick succession (e.g. v2 then v3) both fetch; whichever response
+  // lands second used to always win. Now a response is only applied if its
+  // token is still the newest — the click order wins, not the network order.
+  var fetchSeq = 0;
+
+  var SPLIT_SVG = '<svg viewBox="0 0 24 24"><path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6M6 21v-4"/><path d="M15 18l3 3 3-3"/></svg>';
+
   /* ── DOM refs ── */
-  var projectListEl  = document.getElementById("project-list");
+  var scopeBtn        = document.getElementById("scope-btn");
+  var scopeNameEl      = document.getElementById("scope-name");
+  var scopeCountEl     = document.getElementById("scope-count");
+  var scopePop         = document.getElementById("scope-pop");
+  var scopeFilterInput = document.getElementById("scope-filter");
+  var scopeListEl      = document.getElementById("scope-list");
+  var favToggle        = document.getElementById("fav-toggle");
+  var favCountEl       = document.getElementById("fav-count");
+  var brandCountEl     = document.getElementById("brand-count");
   var feedContainer   = document.getElementById("feed-container");
   var feedStatusEl    = document.getElementById("feed-status");
   var filterInput     = document.getElementById("filter-input");
   var metaBar         = document.getElementById("meta-bar");
+  var barLeftRow      = document.getElementById("bar-left-row");
+  var barContent      = document.getElementById("bar-content");
   var viewer          = document.getElementById("viewer");
   var shell           = document.querySelector(".shell");
   var menuToggle      = document.getElementById("menu-toggle");
@@ -193,6 +257,13 @@
     return month + " " + d.getDate();
   }
 
+  // The time a feed row is filed and labelled under: the sort's own key.
+  // "Newest" and "★ First" order by latest_at (the latest version's time), so
+  // a design with a new version today sits under "Today", not its v1 date.
+  function feedTime(mockup) {
+    return state.sort === "oldest" ? mockup.created_at : (mockup.latest_at || mockup.created_at);
+  }
+
   function dateKey(iso) {
     var d = new Date(iso);
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -228,55 +299,125 @@
     } catch (e) { /* leave previous value */ }
   }
 
+  // Renders the scope button, the favorites toggle, the brand-bar readout,
+  // and (via renderScopeList) the popover's project list — everything that
+  // depends on state.projects, state.favoritesCount, or state.activeProject.
   function renderProjects() {
-    clearChildren(projectListEl);
-
-    // Favorites pseudo-item
-    var favItem = el("li", "project-item favorites" + (state.activeProject === FAVORITES ? " active" : ""));
-    var favActivate = function () { selectProject(FAVORITES); };
-    favItem.addEventListener("click", favActivate);
-    makeActivatable(favItem, favActivate);
-    var favName = el("span", "project-name");
-    var favStar = el("span", "fav-star");
-    favStar.appendChild(text("★"));
-    favName.appendChild(favStar);
-    favName.appendChild(text("Favorites"));
-    var favCount = el("span", "project-count");
-    favCount.appendChild(text(String(state.favoritesCount || 0)));
-    favItem.appendChild(favName);
-    favItem.appendChild(favCount);
-    projectListEl.appendChild(favItem);
-
-    // "All" item
-    var allItem = el("li", "project-item" + (state.activeProject === null ? " active" : ""));
-    var allActivate = function () { selectProject(null); };
-    allItem.addEventListener("click", allActivate);
-    makeActivatable(allItem, allActivate);
-    var allName = el("span", "project-name");
-    allName.appendChild(text("All"));
-    var allCount = el("span", "project-count");
     var total = state.projects.reduce(function (s, p) { return s + p.count; }, 0);
-    allCount.appendChild(text(String(total)));
-    allItem.appendChild(allName);
-    allItem.appendChild(allCount);
-    projectListEl.appendChild(allItem);
 
-    projectListEl.appendChild(el("div", "project-divider"));
+    if (brandCountEl) brandCountEl.textContent = String(total);
 
-    state.projects.forEach(function (proj) {
-      var item = el("li", "project-item" + (state.activeProject === proj.project_slug ? " active" : ""));
-      var activate = function () { selectProject(proj.project_slug); };
+    var activeName, activeCount;
+    if (state.activeProject === FAVORITES) {
+      activeName = "Favorites";
+      activeCount = state.favoritesCount || 0;
+    } else if (state.activeProject === null) {
+      activeName = "All projects";
+      activeCount = total;
+    } else {
+      var active = state.projects.find(function (p) { return p.project_slug === state.activeProject; });
+      activeName = active ? active.project : state.activeProject;
+      activeCount = active ? active.count : 0;
+    }
+    scopeNameEl.textContent = activeName;
+    scopeCountEl.textContent = String(activeCount);
+
+    favToggle.setAttribute("aria-pressed", state.activeProject === FAVORITES ? "true" : "false");
+    favCountEl.textContent = String(state.favoritesCount || 0);
+
+    renderScopeList();
+  }
+
+  // The scope popover's project list: "All projects" (pinned), a divider,
+  // then every project in /api/projects order (most recently active first),
+  // narrowed by state.scopeFilterText (case-insensitive name match).
+  function renderScopeList() {
+    clearChildren(scopeListEl);
+
+    var total = state.projects.reduce(function (s, p) { return s + p.count; }, 0);
+    var filter = state.scopeFilterText.toLowerCase();
+    var candidates = [{ name: "All projects", slug: null, count: total }].concat(
+      state.projects.map(function (p) {
+        return { name: p.project, slug: p.project_slug, count: p.count };
+      })
+    );
+    var matches = filter
+      ? candidates.filter(function (c) { return c.name.toLowerCase().indexOf(filter) !== -1; })
+      : candidates;
+
+    if (matches.length === 0) {
+      var empty = el("li", "scope-empty");
+      empty.appendChild(text("No matches"));
+      scopeListEl.appendChild(empty);
+      return;
+    }
+
+    matches.forEach(function (c) {
+      var item = el("li", "scope-item" + (state.activeProject === c.slug ? " active" : ""));
+      var activate = function () {
+        selectProject(c.slug);
+        closeAllPopovers();
+      };
       item.addEventListener("click", activate);
       makeActivatable(item, activate);
-      var name = el("span", "project-name");
-      name.appendChild(text(proj.project));
-      var count = el("span", "project-count");
-      count.appendChild(text(String(proj.count)));
+      var name = el("span", "scope-item-name");
+      name.appendChild(text(c.name));
+      var count = el("span", "scope-item-count");
+      count.appendChild(text(String(c.count)));
       item.appendChild(name);
       item.appendChild(count);
-      projectListEl.appendChild(item);
+      scopeListEl.appendChild(item);
+
+      // Divider right after the pinned "All projects" row, only when there's
+      // something below it to separate it from.
+      if (c.slug === null && matches.length > 1) {
+        scopeListEl.appendChild(el("li", "scope-divider"));
+      }
     });
   }
+
+  // Closes every popover in the app: the scope picker and any open viewer-bar
+  // menu (viewport, details). R19a: this replaces two independent close
+  // systems (closeScopePop + closeMenus) with one, so opening any one of the
+  // three popovers always closes the others, and Escape / outside click /
+  // window blur close all of them together.
+  function closeAllPopovers() {
+    scopePop.classList.remove("open");
+    scopeBtn.setAttribute("aria-expanded", "false");
+    metaBar.querySelectorAll(".meta-pop.open").forEach(function (p) { p.classList.remove("open"); });
+    metaBar.querySelectorAll('[aria-haspopup][aria-expanded="true"]').forEach(function (b) {
+      b.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  scopeBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    var wasOpen = scopePop.classList.contains("open");
+    closeAllPopovers();
+    if (!wasOpen) {
+      scopePop.classList.add("open");
+      scopeBtn.setAttribute("aria-expanded", "true");
+      scopeFilterInput.value = "";
+      state.scopeFilterText = "";
+      renderScopeList();
+      scopeFilterInput.focus();
+    }
+  });
+  scopePop.addEventListener("click", function (e) { e.stopPropagation(); });
+  scopeFilterInput.addEventListener("input", function () {
+    state.scopeFilterText = scopeFilterInput.value.trim();
+    renderScopeList();
+  });
+  favToggle.addEventListener("click", function () {
+    selectProject(state.activeProject === FAVORITES ? null : FAVORITES);
+  });
+  document.addEventListener("click", closeAllPopovers);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeAllPopovers();
+  });
+  // A click inside the mockup lands in its iframe and never reaches `document`;
+  // the window losing focus to the iframe is the signal instead.
+  window.addEventListener("blur", closeAllPopovers);
 
   function selectProject(slug) {
     state.activeProject = slug;
@@ -298,8 +439,11 @@
       state.offset = 0;
       state.exhausted = false;
       state.mockups = [];
+      // "cached per row until the feed reloads" (task brief) — a reload
+      // invalidates every row's fetched version list, not just the visible ones.
+      versionsCache = {};
       // clear feed but keep container
-      var items = feedContainer.querySelectorAll(".feed-item, .feed-date, .feed-loader");
+      var items = feedContainer.querySelectorAll(".feed-item, .feed-date, .feed-loader, .ver-list");
       items.forEach(function (el) { el.remove(); });
       feedStatusEl.textContent = "Loading...";
       feedStatusEl.style.display = "";
@@ -323,8 +467,10 @@
       data = await resp.json();
     } catch (e) {
       // Surface the failure instead of silently freezing the feed forever.
-      // The auto-refresh poll will retry and recover on the next tick.
+      // A failed reset makes the next poll tick retry it (see pollForUpdates);
+      // a failed scroll page keeps the rows shown and retries on the next scroll.
       if (reset) {
+        state.loadFailed = true;
         feedStatusEl.textContent = "Couldn't load — retrying…";
         feedStatusEl.style.display = "";
       }
@@ -339,8 +485,10 @@
 
     if (reset) state.mockups = data;
     else state.mockups = state.mockups.concat(data);
+    state.loadFailed = false;
 
     renderFeed(reset);
+    rebaselinePoll();
   }
 
   function renderFeed(isReset) {
@@ -358,8 +506,10 @@
 
     var filtered = state.mockups;
 
-    // Always clear and re-render with date separators
-    var oldItems = feedContainer.querySelectorAll(".feed-item, .feed-date");
+    // Always clear and re-render with date separators. Any open .ver-list
+    // (a feed row's expanded version history) is torn down with its row and
+    // reopened below from openVersionLists.
+    var oldItems = feedContainer.querySelectorAll(".feed-item, .feed-date, .ver-list");
     oldItems.forEach(function (node) { node.remove(); });
 
     if (filtered.length === 0) {
@@ -370,15 +520,36 @@
 
     var lastDate = null;
     filtered.forEach(function (mockup) {
-      var dk = dateKey(mockup.created_at);
+      var dk = dateKey(feedTime(mockup));
       if (dk !== lastDate) {
         lastDate = dk;
         var sep = el("div", "feed-date");
-        sep.appendChild(text(formatDateLabel(mockup.created_at)));
+        sep.appendChild(text(formatDateLabel(feedTime(mockup))));
         feedContainer.appendChild(sep);
       }
       feedContainer.appendChild(createFeedItem(mockup));
     });
+
+    // Drop cached/open state for designs no longer in the feed, then reopen
+    // the history lists that were open before this render tore them down.
+    var loaded = {};
+    state.mockups.forEach(function (m) { loaded[m.id] = m; });
+    Object.keys(versionsCache).forEach(function (id) { if (!loaded[id]) delete versionsCache[id]; });
+    Object.keys(openVersionLists).forEach(function (id) {
+      var mockup = loaded[id];
+      var item = findFeedItem(id);
+      var chip = item && item.querySelector(".ver-chip");
+      if (!mockup || !chip) { delete openVersionLists[id]; return; }
+      toggleVersionList(mockup, item, chip);
+    });
+  }
+
+  function findFeedItem(id) {
+    var found = null;
+    feedContainer.querySelectorAll(".feed-item").forEach(function (row) {
+      if (row.getAttribute("data-id") === id) found = row;
+    });
+    return found;
   }
 
   function createFeedItem(mockup) {
@@ -387,8 +558,16 @@
     if (mockup.favorite) item.classList.add("has-fav");
 
     var activate = function () {
-      if (state.activeMockupId === mockup.id) deselectMockup();
-      else selectMockup(mockup.id);
+      // Re-clicking the active row while pinned to an older version goes to
+      // the latest (spec §8.1: "row click still opens the latest") rather
+      // than deselecting — deselect-on-reclick only applies when it's
+      // already showing the latest (nothing left for a click to do but close it).
+      if (state.activeMockupId === mockup.id) {
+        if (state.activeVersion != null) selectMockup(mockup.id);
+        else deselectMockup();
+      } else {
+        selectMockup(mockup.id);
+      }
     };
     item.addEventListener("click", activate);
     makeActivatable(item, activate);
@@ -444,6 +623,13 @@
     delBtn.appendChild(text("\u2715"));
     delBtn.addEventListener("click", function (e) {
       e.stopPropagation();
+      // A single-version design keeps the old no-confirm behaviour; a design
+      // with history confirms and names the version count, since deleting it
+      // takes every version with it.
+      if (mockup.version_count >= 2 &&
+          !confirm("Delete '" + mockup.title + "' and all " + mockup.version_count + " versions?")) {
+        return;
+      }
       deleteMockup(mockup.id).catch(function () {
         // Flash the button so a failed delete isn't a silent no-op.
         delBtn.classList.add("failed");
@@ -465,19 +651,175 @@
     typeEl.appendChild(text(mockup.content_type));
     meta.appendChild(typeEl);
 
+    if (mockup.version_count >= 2) {
+      var chip = el("button", "ver-chip", { type: "button" });
+      chip.appendChild(text(mockup.version_count + " versions"));
+      chip.addEventListener("click", function (e) {
+        e.stopPropagation();
+        toggleVersionList(mockup, item, chip);
+      });
+      meta.appendChild(chip);
+    }
+
     var time = el("span", "feed-time");
-    time.appendChild(text(formatTime(mockup.created_at)));
+    time.appendChild(text(formatTime(feedTime(mockup))));
     meta.appendChild(time);
 
     item.appendChild(meta);
     return item;
   }
 
+  /* \u2500\u2500 Version chip + history list (feed rows) \u2500\u2500 */
+
+  // Opens/closes the .ver-list under `item` for `mockup`, fetching its
+  // versions from /api/mockups/{id} on first open and caching them in
+  // versionsCache (invalidated on the next feed reload, see loadMockups).
+  function toggleVersionList(mockup, item, chip) {
+    var list = item.nextElementSibling;
+    if (list && list.classList.contains("ver-list")) {
+      var nowOpen = list.classList.toggle("open");
+      chip.classList.toggle("open", nowOpen);
+      if (nowOpen) openVersionLists[mockup.id] = true;
+      else delete openVersionLists[mockup.id];
+      return;
+    }
+
+    openVersionLists[mockup.id] = true;
+    list = el("div", "ver-list open");
+    chip.classList.add("open");
+    item.insertAdjacentElement("afterend", list);
+
+    var cached = versionsCache[mockup.id];
+    if (cached) {
+      renderVersionList(list, mockup, cached);
+      return;
+    }
+    var loading = el("div", "ver-list-loading");
+    loading.appendChild(text("Loading\u2026"));
+    list.appendChild(loading);
+    fetch("/api/mockups/" + encodeURIComponent(mockup.id))
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)); })
+      .then(function (data) {
+        versionsCache[mockup.id] = data.versions;
+        renderVersionList(list, mockup, data.versions);
+      })
+      .catch(function () {
+        clearChildren(list);
+        var failed = el("div", "ver-list-loading");
+        failed.appendChild(text("Couldn't load versions"));
+        list.appendChild(failed);
+      });
+  }
+
+  // (Re)draws the rows inside an open .ver-list from a cached `versions` array
+  // (newest first, as returned by GET /api/mockups/{id}). Also used to refresh
+  // highlighting after a selection changes while the list stays open.
+  function renderVersionList(list, mockup, versions) {
+    clearChildren(list);
+    var latestNumber = versions.length ? versions[0].number : null;
+    var isActiveDesign = state.activeMockupId === mockup.id;
+    var effectiveActive = state.activeVersion == null ? latestNumber : state.activeVersion;
+
+    versions.forEach(function (v) {
+      var isLatest = v.number === latestNumber;
+      var isRowActive = isActiveDesign && v.number === effectiveActive;
+      var row = el("div", "ver-row" + (isRowActive ? " active" : ""));
+      var activate = function () {
+        if (isLatest) selectMockup(mockup.id);
+        else selectMockup(mockup.id, v.number);
+      };
+      // The split button stops its own click, so a click here is never a split.
+      row.addEventListener("click", activate);
+      makeActivatable(row, activate);
+
+      var num = el("span", "ver-row-num");
+      num.appendChild(text("v" + v.number));
+      row.appendChild(num);
+
+      var vTitle = el("span", "ver-row-title", { title: v.title });
+      vTitle.appendChild(text(v.title));
+      row.appendChild(vTitle);
+
+      if (isLatest) {
+        var tag = el("span", "ver-row-latest");
+        tag.appendChild(text("latest"));
+        row.appendChild(tag);
+      }
+
+      var vTime = el("span", "ver-row-time");
+      vTime.appendChild(text(formatTime(v.created_at)));
+      row.appendChild(vTime);
+
+      var split = el("button", "ver-split", { type: "button", title: "Split into its own mockup" });
+      split.insertAdjacentHTML("afterbegin", SPLIT_SVG);
+      split.addEventListener("click", function (e) {
+        e.stopPropagation();
+        splitVersion(mockup, v, split);
+      });
+      row.appendChild(split);
+
+      list.appendChild(row);
+    });
+  }
+
+  // If `mockupId`'s row currently has its version list open, redraw it from
+  // the cache so the highlighted "active" row follows a selection made
+  // elsewhere (e.g. clicking the feed row itself, or a version row in the
+  // list) without waiting for another fetch.
+  function refreshOpenVersionList(mockupId) {
+    var item = findFeedItem(mockupId);
+    if (!item) return;
+    var list = item.nextElementSibling;
+    if (!list || !list.classList.contains("ver-list") || !list.classList.contains("open")) return;
+    var cached = versionsCache[mockupId];
+    if (!cached) return;
+    var mockup = state.mockups.find(function (m) { return m.id === mockupId; }) || { id: mockupId };
+    renderVersionList(list, mockup, cached);
+  }
+
+  function splitVersion(mockup, version, splitBtn) {
+    if (!confirm("Split v" + version.number + " '" + version.title + "' into its own mockup?")) return;
+    fetch("/api/mockups/" + encodeURIComponent(mockup.id) + "/versions/" + version.number + "/split", {
+      method: "POST"
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)); })
+      .then(function (newDesign) {
+        Promise.all([loadProjects(), loadFavoritesCount()]).then(renderProjects);
+        return loadMockups(true).then(function () { selectMockup(newDesign.id); });
+      })
+      .catch(function () {
+        splitBtn.classList.add("failed");
+        setTimeout(function () { splitBtn.classList.remove("failed"); }, 1500);
+      });
+  }
+
   /* ── Deselect ── */
+  // #bar-left (eyebrow + menu toggle) is a persistent part of #meta-bar, not
+  // dynamic content — clearing the bar back to its "nothing selected" state
+  // must leave it standing and only clear what renderMetaBar() fills in:
+  // #bar-left-row's star/copy/pop-out buttons and #bar-content's title/icons.
+  function clearBarLeftRowExtras() {
+    Array.from(barLeftRow.children).forEach(function (c) {
+      if (c !== menuToggle) barLeftRow.removeChild(c);
+    });
+  }
+
+  function resetMetaBarEmpty() {
+    clearBarLeftRowExtras();
+    clearChildren(barContent);
+    metaBar.classList.add("empty");
+    var hint = el("span", "meta-hint");
+    hint.appendChild(text("Select a mockup to preview"));
+    barContent.appendChild(hint);
+  }
+
   function deselectMockup() {
     state.activeMockupId = null;
+    state.activeVersion = null;
+    activeMockupDetail = null;
     var url = new URL(window.location);
     url.searchParams.delete("mockup");
+    url.searchParams.delete("v");
     history.replaceState(null, "", url);
 
     feedContainer.querySelectorAll(".feed-item").forEach(function (el) {
@@ -486,11 +828,25 @@
 
     clearChildren(viewer);
     viewer.appendChild(createEmptyViewer());
-    clearChildren(metaBar);
-    metaBar.classList.add("empty");
-    var hint = el("span", "meta-hint");
-    hint.appendChild(text("Select a mockup to preview"));
-    metaBar.appendChild(hint);
+    resetMetaBarEmpty();
+  }
+
+  /* ── URL + feed highlight sync ── */
+  // `?mockup={id}` alone always means "latest" (follows future versions);
+  // `&v={n}` pins the link to that version. Never a query string on /view —
+  // only the gallery URL uses one (spec §7).
+  function syncUrl(id, version) {
+    var url = new URL(window.location);
+    url.searchParams.set("mockup", id);
+    if (version != null) url.searchParams.set("v", String(version));
+    else url.searchParams.delete("v");
+    history.replaceState(null, "", url);
+  }
+
+  function highlightActiveFeedRow(id) {
+    feedContainer.querySelectorAll(".feed-item").forEach(function (row) {
+      row.classList.toggle("active", row.getAttribute("data-id") === id);
+    });
   }
 
   /* ── Clipboard ── */
@@ -498,8 +854,15 @@
     return window.location.origin + "/?mockup=" + encodeURIComponent(mockup.id);
   }
 
-  function directLink(mockup) {
-    return window.location.origin + "/view/" + encodeURIComponent(mockup.id);
+  // `version` omitted (or null) links to the latest, which is what every
+  // caller except the viewer bar wants — the viewer bar passes state.activeVersion
+  // so its copy-link/pop-out follow whichever version is currently on screen.
+  function viewPath(id, version) {
+    return "/view/" + encodeURIComponent(id) + (version != null ? "/v/" + version : "");
+  }
+
+  function directLink(mockup, version) {
+    return window.location.origin + viewPath(mockup.id, version);
   }
 
   // Copy `str`, flash the button's label to okText/failText, then restore its original
@@ -549,6 +912,13 @@
         body: JSON.stringify({ favorite: next })
       });
       if (!resp.ok) throw new Error("request failed");
+      var saved = await resp.json();
+      // The server bumped updated_at. Copy it onto the feed row (which may be
+      // another object than `mockup`, e.g. when the viewer-bar star was used)
+      // and rebaseline, or the next poll sees our own change and reloads.
+      state.mockups.forEach(function (m) {
+        if (m.id === saved.id) { m.updated_at = saved.updated_at; m.favorite = saved.favorite; }
+      });
       await loadFavoritesCount();
       renderProjects();
       // If we're viewing the favorites filter and just unfavorited, drop it from the feed
@@ -556,6 +926,7 @@
         state.mockups = state.mockups.filter(function (m) { return m.id !== mockup.id; });
         renderFeed(true);
       }
+      rebaselinePoll();
     } catch (e) {
       mockup.favorite = !next;        // rollback
       syncFavoriteUI(mockup);
@@ -575,7 +946,16 @@
         s.classList.toggle("starred", mockup.favorite);
       }
     });
-    if (state.activeMockupId === mockup.id) renderMetaBar(mockup);
+    if (state.activeMockupId !== mockup.id) return;
+    // Re-render from activeMockupDetail (the full detail behind the current
+    // view) rather than `mockup`, which may be only a feed-row summary and
+    // lack the `versions` array a multi-version pill needs.
+    if (activeMockupDetail && activeMockupDetail.id === mockup.id) {
+      activeMockupDetail.favorite = mockup.favorite;
+      renderMetaBar(activeMockupDetail, state.activeVersion);
+    } else {
+      renderMetaBar(mockup, state.activeVersion);
+    }
   }
 
   async function deleteMockup(id) {
@@ -588,76 +968,115 @@
     // If we deleted the active mockup, clear the viewer
     if (state.activeMockupId === id) {
       state.activeMockupId = null;
+      state.activeVersion = null;
+      activeMockupDetail = null;
       clearChildren(viewer);
       viewer.appendChild(createEmptyViewer());
-      clearChildren(metaBar);
-      metaBar.classList.add("empty");
-      var hint = el("span", "meta-hint");
-      hint.appendChild(text("Select a mockup to preview"));
-      metaBar.appendChild(hint);
+      resetMetaBarEmpty();
     }
 
     renderFeed(true);
+    rebaselinePoll();
     Promise.all([loadProjects(), loadFavoritesCount()]).then(renderProjects);
   }
 
-  function createEmptyViewer() {
+  function createEmptyViewer(message) {
     var wrap = el("div", "viewer-empty");
     var icon = el("div", "viewer-empty-icon");
     icon.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="9"/></svg>');
     wrap.appendChild(icon);
     var txt = el("div", "viewer-empty-text");
-    txt.appendChild(text("No mockup selected"));
+    txt.appendChild(text(message || "No mockup selected"));
     wrap.appendChild(txt);
     return wrap;
   }
 
   /* ── Mockup Selection ── */
-  function selectMockup(id) {
+  // `version`: number to pin to a specific version, or omitted/null to follow
+  // the latest. `id` may be a design id or, from a deep link (RF-5), an alias
+  // id — fetchAndDisplay resolves that case and rewrites the URL.
+  function selectMockup(id, version) {
     state.activeMockupId = id;
+    state.activeVersion = version || null;
 
     // On mobile, dismiss the drawer so the chosen mockup is actually visible.
     setNav(false);
 
-    // Update URL
-    var url = new URL(window.location);
-    url.searchParams.set("mockup", id);
-    history.replaceState(null, "", url);
+    syncUrl(id, state.activeVersion);
+    highlightActiveFeedRow(id);
 
-    // Update feed active state
-    feedContainer.querySelectorAll(".feed-item").forEach(function (el) {
-      if (el.getAttribute("data-id") === id) el.classList.add("active");
-      else el.classList.remove("active");
-    });
-
-    // Find mockup data
-    var mockup = state.mockups.find(function (m) { return m.id === id; });
-    if (!mockup) {
-      // Need to fetch it
-      fetchAndDisplay(id);
+    var summary = state.mockups.find(function (m) { return m.id === id; });
+    // A design with only one version renders straight from the feed summary
+    // (today's fast path, no round trip). A design with several needs a full
+    // fetch anyway: the pill's "latest" number can differ from version_count
+    // once a version has been deleted (numbers are never reused, so gaps are
+    // possible), and only /api/mockups/{id} returns the true one. An id with
+    // no summary at all (not yet loaded, or an alias) also needs the fetch,
+    // and so does a pinned version: only the fetch can say it doesn't exist.
+    if (!summary || summary.version_count >= 2 || state.activeVersion != null) {
+      fetchAndDisplay(id, state.activeVersion);
       return;
     }
 
-    renderViewer(mockup);
-    renderMetaBar(mockup);
+    activeMockupDetail = summary;
+    renderViewer(summary, state.activeVersion);
+    renderMetaBar(summary, state.activeVersion);
   }
 
-  async function fetchAndDisplay(id) {
-    var resp;
+  async function fetchAndDisplay(id, version) {
+    var mySeq = ++fetchSeq;
+    var url = "/api/mockups/" + encodeURIComponent(id);
+    if (version != null) url += "?v=" + version;
+    var mockup;
     try {
-      resp = await fetch("/api/mockups/" + encodeURIComponent(id));
+      var resp = await fetch(url);
+      if (resp.status === 404) {
+        if (mySeq !== fetchSeq || state.activeMockupId !== id) return;
+        if (version != null) {
+          // A pinned link to a version that is gone (deleted, split away, or
+          // an alias with another number): open the design's latest instead
+          // of leaving the viewer empty. The pill shows which version it is.
+          state.activeVersion = null;
+          fetchAndDisplay(id, null);
+        } else {
+          deselectMockup();
+          clearChildren(viewer);
+          viewer.appendChild(createEmptyViewer("Mockup not found"));
+        }
+        return;
+      }
       if (!resp.ok) return;
-      var mockup = await resp.json();
-      // The selection may have changed while this request was in flight; don't
-      // clobber the viewer with a now-stale response.
-      if (state.activeMockupId !== id) return;
-      renderViewer(mockup);
-      renderMetaBar(mockup);
-    } catch (e) { /* network error — leave the current view in place */ }
+      mockup = await resp.json();
+    } catch (e) { return; /* network error — leave the current view in place */ }
+
+    // Two guards against a stale response: the selection may have moved to a
+    // different design entirely (activeMockupId check, as before), or — the
+    // race this fixes — a second click on the SAME design (e.g. v2 then v3)
+    // started a newer fetch that can resolve before this one. Only the
+    // newest request's response may be applied; network order no longer
+    // decides what wins, click order does.
+    if (mySeq !== fetchSeq) return;
+    if (state.activeMockupId !== id) return;
+
+    // RF-5: `id` may have been an alias — GET /api/mockups/{id} resolves it
+    // and returns the design's own id plus the version it's pinned to. Adopt
+    // both and rewrite the URL so the alias never lingers in the address bar.
+    var wasAlias = mockup.id !== id;
+    state.activeMockupId = mockup.id;
+    state.activeVersion = (version != null || wasAlias) ? mockup.version : null;
+
+    syncUrl(state.activeMockupId, state.activeVersion);
+    highlightActiveFeedRow(state.activeMockupId);
+
+    activeMockupDetail = mockup;
+    renderViewer(mockup, state.activeVersion);
+    renderMetaBar(mockup, state.activeVersion);
+    refreshOpenVersionList(state.activeMockupId);
   }
 
-  function renderMetaBar(mockup) {
-    clearChildren(metaBar);
+  function renderMetaBar(mockup, version) {
+    clearBarLeftRowExtras();
+    clearChildren(barContent);
     metaBar.classList.remove("empty");
 
     var metaStar = el("button", "meta-star" + (mockup.favorite ? " starred" : ""),
@@ -667,28 +1086,50 @@
       e.stopPropagation();
       toggleFavorite(mockup);
     });
-    metaBar.appendChild(metaStar);
+    barLeftRow.appendChild(metaStar);
 
     // Actions sit beside the star as icons, so the title keeps the width.
     var copyDirect = el("button", "meta-icon-btn", { title: "Copy direct link (no gallery UI)", type: "button" });
     copyDirect.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>');
     copyDirect.addEventListener("click", function () {
-      copyWithFlash(copyDirect, directLink(mockup), "\u2713", "\u2717");
+      copyWithFlash(copyDirect, directLink(mockup, version), "\u2713", "\u2717");
     });
-    metaBar.appendChild(copyDirect);
+    barLeftRow.appendChild(copyDirect);
 
     var popout = el("a", "meta-icon-btn", {
-      href: "/view/" + encodeURIComponent(mockup.id),
+      href: viewPath(mockup.id, version),
       target: "_blank", rel: "noopener", title: "Pop out"
     });
     popout.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
-    metaBar.appendChild(popout);
+    barLeftRow.appendChild(popout);
 
-    metaBar.appendChild(el("span", "meta-sep"));
+    barContent.appendChild(el("span", "meta-sep"));
 
+    // The wrapper (not .meta-title) is the flex:1 item, so the pill sits
+    // right after the title text instead of being pushed to the bar's far
+    // right by a separately-growing title (task-5-review finding).
+    var titleWrap = el("span", "meta-title-wrap");
     var title = el("span", "meta-title", { title: mockup.title });
     title.appendChild(text(mockup.title));
-    metaBar.appendChild(title);
+    titleWrap.appendChild(title);
+
+    if (mockup.version_count >= 2) {
+      // mockup.versions is newest-first; its first entry is the true latest
+      // version number, which can differ from version_count once a version
+      // has been deleted (numbers are never reused, so gaps are possible).
+      // An older version names the latest number, not the count: with gaps,
+      // "v5 of 3" would be nonsense.
+      var latestNumber = (mockup.versions && mockup.versions.length) ? mockup.versions[0].number : mockup.version;
+      var shownVersion = mockup.version;
+      var isLatest = shownVersion === latestNumber;
+      var pill = el("span", "ver-pill" + (isLatest ? "" : " old"));
+      pill.appendChild(text(isLatest
+        ? ("v" + shownVersion + " · latest")
+        : ("v" + shownVersion + " of v" + latestNumber)));
+      titleWrap.appendChild(pill);
+    }
+
+    barContent.appendChild(titleWrap);
 
     if (mockup.content_type === "html") {
       // Viewport: one device icon labelled with the current size, choices in a menu.
@@ -710,7 +1151,7 @@
           setViewport(v[0]);
           vpMenu.querySelectorAll(".meta-vp-opt").forEach(function (r) { r.classList.toggle("active", r === row); });
           vpLabel.textContent = v[2];
-          closeMenus();
+          closeAllPopovers();
         });
         vpMenu.appendChild(row);
       });
@@ -721,7 +1162,7 @@
       fsBtn.addEventListener("click", function () {
         if (viewer.requestFullscreen) viewer.requestFullscreen();
       });
-      metaBar.appendChild(fsBtn);
+      barContent.appendChild(fsBtn);
     }
 
     // Description, tags, project and time live in a popover behind the info button.
@@ -742,6 +1183,7 @@
     }
     addInfoField(info, "Project", mockup.project);
     addInfoField(info, "Created", formatTime(mockup.created_at));
+    addInfoField(info, "Versions", String(mockup.version_count));
     addMenu(infoBtn, info);
   }
 
@@ -750,15 +1192,15 @@
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       var wasOpen = pop.classList.contains("open");
-      closeMenus();
+      closeAllPopovers();
       if (!wasOpen) {
         pop.classList.add("open");
         btn.setAttribute("aria-expanded", "true");
       }
     });
     pop.addEventListener("click", function (e) { e.stopPropagation(); });
-    metaBar.appendChild(btn);
-    metaBar.appendChild(pop);
+    barContent.appendChild(btn);
+    barContent.appendChild(pop);
   }
 
   function addInfoField(info, label, value) {
@@ -774,32 +1216,17 @@
     }
   }
 
-  function closeMenus() {
-    metaBar.querySelectorAll(".meta-pop.open").forEach(function (p) { p.classList.remove("open"); });
-    metaBar.querySelectorAll('[aria-haspopup][aria-expanded="true"]').forEach(function (b) {
-      b.setAttribute("aria-expanded", "false");
-    });
-  }
-
-  document.addEventListener("click", closeMenus);
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeMenus();
-  });
-  // A click inside the mockup lands in its iframe and never reaches `document`;
-  // the window losing focus to the iframe is the signal instead.
-  window.addEventListener("blur", closeMenus);
-
   function setViewport(size) {
     viewer.classList.remove("vp-mobile", "vp-tablet");
     if (size === "mobile") viewer.classList.add("vp-mobile");
     else if (size === "tablet") viewer.classList.add("vp-tablet");
   }
 
-  function renderViewer(mockup) {
+  function renderViewer(mockup, version) {
     clearChildren(viewer);
     viewer.classList.remove("vp-mobile", "vp-tablet");
 
-    var viewUrl = "/view/" + encodeURIComponent(mockup.id);
+    var viewUrl = viewPath(mockup.id, version);
 
     if (mockup.content_type === "html") {
       var iframe = el("iframe", "viewer-iframe", {
@@ -866,6 +1293,12 @@
     return params.get("mockup") || null;
   }
 
+  function getInitialVersion() {
+    var params = new URLSearchParams(window.location.search);
+    var v = params.get("v");
+    return v ? parseInt(v, 10) : null;
+  }
+
   /* ── Setup Guide Link ── */
   function updateGuideLink() {
     var link = document.getElementById("guide-link");
@@ -886,39 +1319,102 @@
 
   /* ── Auto-refresh ── */
   var POLL_INTERVAL = 5000;
-  var lastPollSig = null;
+  // What the feed showed when it last matched the server: the probe URL that
+  // reproduces the feed's rows, and a signature of those rows. Set from the
+  // rows the feed itself loaded (rebaselinePoll), never from a later probe,
+  // so a change landing between a load and the next tick is still a change.
+  var lastPoll = null;
+
+  // The probe: the feed's own query (scope, search, sort) from offset 0, for
+  // as many rows as the feed holds. Capped at 200 rows; a change below that
+  // in a very long scrolled feed won't trigger until the next reset.
+  function probeUrl() {
+    var probeLimit = Math.min(Math.max(state.mockups.length, 1), 200);
+    var url = "/api/mockups?limit=" + probeLimit + "&sort=" + encodeURIComponent(state.sort);
+    if (state.activeProject === FAVORITES) url += "&favorites_only=true";
+    else if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
+    if (state.filterText) url += "&q=" + encodeURIComponent(state.filterText);
+    return url;
+  }
+
+  // id + updated_at + favorite: catches inserts, deletions, metadata/content
+  // edits and favorite toggles made by other clients/agents.
+  function pollSig(rows) {
+    return rows.slice(0, 200).map(function (m) {
+      return m.id + ":" + m.updated_at + ":" + (m.favorite ? 1 : 0);
+    }).join("|");
+  }
+
+  // Call whenever state.mockups changes to match the server (a load, or a
+  // local delete/unfavorite that the server already applied).
+  function rebaselinePoll() {
+    lastPoll = { url: probeUrl(), sig: pollSig(state.mockups) };
+  }
+
+  async function reloadFeed() {
+    await loadProjects();
+    await loadMockups(true);
+    updateGuideLink();
+  }
 
   async function pollForUpdates() {
     try {
-      // Probe the current view and build a signature over id + updated_at +
-      // favorite. Comparing the whole signature (not just the newest-inserted
-      // id) means we also catch deletions, metadata/content edits, and favorite
-      // toggles made by other clients/agents — not only new inserts. Capped at
-      // 200 rows; a change to an item below that in a very long scrolled feed
-      // won't trigger until the next reset.
-      var probeLimit = Math.min(Math.max(state.mockups.length, 1), 200);
-      var url = "/api/mockups?limit=" + probeLimit + "&sort=newest";
-      if (state.activeProject === FAVORITES) url += "&favorites_only=true";
-      else if (state.activeProject) url += "&project=" + encodeURIComponent(state.activeProject);
-      if (state.filterText) url += "&q=" + encodeURIComponent(state.filterText);
+      // No good load yet, or the last one failed: retry it. A probe alone
+      // can't recover, since a failed feed has nothing to compare against.
+      if (state.loadFailed || lastPoll === null) {
+        await reloadFeed();
+        return;
+      }
+      var url = probeUrl();
       var resp = await fetch(url);
       if (!resp.ok) return;
       var data = await resp.json();
-
-      var sig = data.map(function (m) {
-        return m.id + ":" + m.updated_at + ":" + (m.favorite ? 1 : 0);
-      }).join("|");
-
-      if (lastPollSig === null) { lastPollSig = sig; return; }
-      if (sig !== lastPollSig) {
-        lastPollSig = sig;
-        await loadProjects();
-        await loadMockups(true);
-        updateGuideLink();
-      }
+      if (url === lastPoll.url && pollSig(data) === lastPoll.sig) return;
+      // loadMockups rebaselines when it succeeds. If it skips (a scroll load
+      // holds state.loading) the baseline stays, and the next tick retries.
+      await reloadFeed();
+      followActiveDesign(data);
     } catch (e) {
       // silently skip on network errors
     }
+  }
+
+  // When the active design gains or loses a version: a viewer that follows
+  // the latest moves to the new latest; a pinned viewer keeps its content and
+  // only refreshes its pill and details, which would otherwise go stale.
+  function followActiveDesign(rows) {
+    if (state.activeMockupId == null || !activeMockupDetail) return;
+    var id = state.activeMockupId;
+    var fresh = rows.find(function (m) { return m.id === id; })
+      || state.mockups.find(function (m) { return m.id === id; });
+    if (!fresh) return;
+    if (fresh.latest_at === activeMockupDetail.latest_at
+        && fresh.version_count === activeMockupDetail.version_count) return;
+    if (state.activeVersion == null) fetchAndDisplay(id, null);
+    else refreshPinnedMeta(id, state.activeVersion);
+  }
+
+  async function refreshPinnedMeta(id, version) {
+    var mySeq = fetchSeq;
+    var mockup;
+    try {
+      var resp = await fetch("/api/mockups/" + encodeURIComponent(id) + "?v=" + version);
+      if (resp.status === 404) {
+        // The pinned version itself is gone: fall back like a stale link does.
+        if (mySeq === fetchSeq && state.activeMockupId === id) {
+          state.activeVersion = null;
+          fetchAndDisplay(id, null);
+        }
+        return;
+      }
+      if (!resp.ok) return;
+      mockup = await resp.json();
+    } catch (e) { return; }
+    // Skip if the user picked something else meanwhile.
+    if (mySeq !== fetchSeq || state.activeMockupId !== id || state.activeVersion !== version) return;
+    activeMockupDetail = mockup;
+    renderMetaBar(mockup, version);
+    refreshOpenVersionList(id);
   }
 
   setInterval(pollForUpdates, POLL_INTERVAL);
@@ -933,7 +1429,7 @@
 
     var initialId = getInitialMockupId();
     if (initialId) {
-      selectMockup(initialId);
+      selectMockup(initialId, getInitialVersion());
     } else if (state.mockups.length > 0) {
       // Auto-select most recent
       selectMockup(state.mockups[0].id);

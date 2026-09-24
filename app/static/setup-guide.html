@@ -701,7 +701,7 @@ cp .env.example .env</pre></div>
 
     <div class="callout info">
       <div class="callout-label">Expected behavior</div>
-      When connected, Claude Code has access to 6 tools provided by the Mockups MPC server. You can verify by checking your MCP server list or asking Claude what tools are available from the mockups server.
+      When connected, Claude Code has access to 8 tools provided by the Mockups MPC server. You can verify by checking your MCP server list or asking Claude what tools are available from the mockups server.
     </div>
   </section>
 
@@ -729,6 +729,10 @@ write the file locally then upload it to the Mockups MPC gallery via curl:
       -F file=@/path/to/file.html -F project=name -F title=name \
       [-F description=text] [-F "tags=a,b,c"]
 
+To revise a mockup you already uploaded, add <span class="cmd">-F parent=&lt;id&gt;</span> (the id
+from the earlier upload response): the gallery keeps it as a new version
+of the same design. Use <span class="cmd">-F fold=false</span> only for a deliberate separate variant.
+
 To read a mockup's content later, use <span class="cmd">get_mockup</span> to get
 its <span class="cmd">view_url</span>, then curl it.</pre></div>
       </div>
@@ -743,13 +747,24 @@ its <span class="cmd">view_url</span>, then curl it.</pre></div>
       <div class="callout-label">Why this matters</div>
       Without this instruction, your AI may pass entire file contents through MCP tool calls, consuming tokens unnecessarily. The curl upload approach sends files directly to the server's HTTP endpoint, keeping large content out of the model context entirely.
     </div>
+
+    <div class="subsection">
+      <h3><span class="method-badge">Versions</span> Revisions stay together</h3>
+      <p>Each mockup is a design with one or more versions. A revision becomes the next version of its design, so the gallery shows one entry per design instead of one per draft. Earlier versions are kept, and the viewer's version pill and history list open any of them.</p>
+      <ul>
+        <li><strong>Revise on purpose:</strong> upload with <code>-F parent=&lt;id&gt;</code>, or call <code>update_mockup</code> with new <code>content</code>.</li>
+        <li><strong>Automatic grouping:</strong> an upload without a parent joins an existing design when exactly one design in the same project has the same base title. The base title ignores trailing draft markers, so "Pricing page draft 3" joins "Pricing page draft 2". The response then says <code>"folded": true</code> and names the design.</li>
+        <li><strong>Keep it separate:</strong> send <code>-F fold=false</code> for a deliberate variant. If an upload was grouped by mistake, <code>split_version</code> (or the split button in the history list) makes it its own mockup again.</li>
+        <li><strong>Links:</strong> <code>/view/&lt;id&gt;</code> shows the latest version. <code>/view/&lt;id&gt;/v/&lt;n&gt;</code> always shows version <em>n</em>. The id of a mockup that was grouped into another design keeps showing the version it became.</li>
+      </ul>
+    </div>
   </section>
 
   <!-- Section 6: Available Tools -->
   <section class="section">
     <div class="section-number">06</div>
     <h2>Available Tools</h2>
-    <p>The MCP server exposes six tools for managing your mockup gallery.</p>
+    <p>The MCP server exposes eight tools for managing your mockup gallery.</p>
 
     <table class="tools-table">
       <thead>
@@ -770,6 +785,8 @@ its <span class="cmd">view_url</span>, then curl it.</pre></div>
             <span class="param required">content_type</span>
             <span class="param optional">description</span>
             <span class="param optional">tags</span>
+            <span class="param optional">parent</span>
+            <span class="param optional">fold</span>
           </td>
         </tr>
         <tr>
@@ -783,14 +800,15 @@ its <span class="cmd">view_url</span>, then curl it.</pre></div>
         </tr>
         <tr>
           <td><span class="tool-name">get_mockup</span></td>
-          <td>Get a specific mockup by its UUID, including view and gallery URLs. Curl the <code>view_url</code> to read file content.</td>
+          <td>Get a specific mockup by its UUID, including view and gallery URLs and its version list. Curl the <code>view_url</code> to read file content.</td>
           <td class="tool-params">
             <span class="param required">id</span>
+            <span class="param optional">version</span>
           </td>
         </tr>
         <tr>
           <td><span class="tool-name">update_mockup</span></td>
-          <td>Update a mockup's metadata or replace its content entirely.</td>
+          <td>Update a mockup's metadata, or add a new version by supplying <code>content</code>. Earlier versions are kept.</td>
           <td class="tool-params">
             <span class="param required">id</span>
             <span class="param optional">title</span>
@@ -802,9 +820,18 @@ its <span class="cmd">view_url</span>, then curl it.</pre></div>
         </tr>
         <tr>
           <td><span class="tool-name">delete_mockup</span></td>
-          <td>Delete a mockup by ID. Removes both the database record and the stored file.</td>
+          <td>Delete a mockup by ID with all its versions, or only one version when <code>version</code> is given.</td>
           <td class="tool-params">
             <span class="param required">id</span>
+            <span class="param optional">version</span>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tool-name">split_version</span></td>
+          <td>Make one version its own standalone mockup. Undoes an automatic or manual grouping.</td>
+          <td class="tool-params">
+            <span class="param required">id</span>
+            <span class="param required">version</span>
           </td>
         </tr>
         <tr>
@@ -814,6 +841,15 @@ its <span class="cmd">view_url</span>, then curl it.</pre></div>
             <span class="param required">id</span>
             <span class="param optional">add</span>
             <span class="param optional">remove</span>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tool-name">set_created_at</span></td>
+          <td>Change the date of a mockup's latest version, or of one version. Useful for backdating uploads.</td>
+          <td class="tool-params">
+            <span class="param required">id</span>
+            <span class="param required">created_at</span>
+            <span class="param optional">version</span>
           </td>
         </tr>
       </tbody>
