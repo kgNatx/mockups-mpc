@@ -211,11 +211,15 @@ write the file locally then upload it to the Mockups MPC gallery via curl:
       -F file=@/path/to/file.html -F project=name -F title=name \
       [-F description=text] [-F "tags=a,b,c"]
 
+To revise a mockup you already uploaded, add `-F parent=<id>` (the id
+from the earlier upload response): the gallery keeps it as a new version
+of the same design. Use `-F fold=false` only for a deliberate separate variant.
+
 To read a mockup's content later, use `get_mockup` to get its
 `view_url`, then curl it.
 ```
 
-Add to `~/.claude/CLAUDE.md` for all projects, or a project's `CLAUDE.md` for specific ones.
+Add to `~/.claude/CLAUDE.md` for all projects, or a project's `CLAUDE.md` for specific ones. The in-app Setup Guide carries the same snippet; an existing install gets the updated guide as a new version of its Setup Guide on the first start after upgrading.
 
 ## Gallery UI
 

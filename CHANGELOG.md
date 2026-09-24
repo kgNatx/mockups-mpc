@@ -17,7 +17,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 - Gallery deep link to one version: `/?mockup={id}&v={n}`. `/?mockup={id}` alone follows the latest version.
 - Search (`q` on `GET /api/mockups` and the gallery search box) also matches version titles, so a folded design is findable by any of its drafts' titles.
 - An auto-folded upload's response includes `folded: true` and a `note`: `Added as version {n} of '{design title}'. If this was meant to be a separate mockup, split it out with split_version(id, {n}) or POST /api/mockups/{id}/versions/{n}/split.`
-- Gallery UI rebuild for versions: a brand bar at the top of the sidebar; a scope picker (all projects or one project, with a favorites toggle beside it) in place of the project list; with the sidebar collapsed, a small brand "eyebrow" above a compact row of viewer-bar buttons, so the 48px bar keeps its height; a `N versions` chip on feed rows that opens the version history; a version pill in the viewer header (`v3 · latest`, or `v2 of 3` when viewing an older version); and a split action on each version in the history. A viewer that follows the latest moves to a new version when one lands.
+- Gallery UI rebuild for versions: a brand bar at the top of the sidebar; a scope picker (all projects or one project, with a favorites toggle beside it) in place of the project list; with the sidebar collapsed, a small brand "eyebrow" above a compact row of viewer-bar buttons, so the 48px bar keeps its height; a `N versions` chip on feed rows that opens the version history; a version pill in the viewer header (`v3 · latest`, or `v2 of v5` when viewing an older version: it names the latest number, since deleted versions leave gaps); and a split action on each version in the history. A viewer that follows the latest moves to a new version when one lands; a viewer pinned to an older version keeps it and updates its pill. A link to a version that no longer exists opens the latest instead of an empty viewer.
+- The in-app Setup Guide covers versions (`parent=`, auto-fold, `fold=false`, split, version links) and lists all eight MCP tools. Its `CLAUDE.md` snippet gains the `-F parent=<id>` line.
+- Existing installs get the current Setup Guide: on startup, when the shipped guide differs from the stored one, it is added as a new version of the "Setup Guide" design in the "Mockups MPC" project. A deleted or renamed guide is left alone.
 - Migration: on first startup after upgrading, every existing mockup gets a v1 automatically. Nothing merges and the list looks identical after upgrade; running it again (or restarting) is a no-op.
 
 ### Changed
@@ -27,7 +29,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 - Caveat: splitting a version out of a series leaves two designs with the same base title, so later uploads in that series no longer auto-fold (auto-fold needs exactly one match) and each creates a new design. Use `parent=<id>` to add to a specific design, or `fold=false` to make the new-design choice explicit.
 
 ### Fixed
-- On touch screens the feed row's always-visible action buttons no longer sit over the title and meta line; the row reserves their width. The meta line stays on one line at every width, with a long project badge truncated by an ellipsis instead of wrapping.
+- On touch screens the feed row's always-visible action buttons no longer sit over the title and meta line: they sit on the title line, which reserves their width, so the meta line keeps the full row width. The meta line stays on one line at every width, with a long project badge truncated by an ellipsis instead of wrapping.
+- With more than 50 mockups, rows loaded by scrolling the feed no longer disappear a few seconds later. The auto-refresh compared a longer probe against a shorter one, saw a change, and reloaded the first page.
+- A mockup added in the first few seconds after the gallery loads is now picked up by the auto-refresh (it used to wait for some later change).
+- The gallery and popped-out mockups have a favicon (`/favicon.ico` returned 404).
 
 ## [1.4.3] - 2026-09-23
 
