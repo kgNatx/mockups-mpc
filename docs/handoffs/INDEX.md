@@ -8,3 +8,4 @@ One row per arc. Read the linked handoff first; the newest row is the current st
 | s3 (2026-07-02) | Promotion + version-tracker reconciliation | GHCR, registry and GitHub Releases realigned; Docker workflow manual-only | [promotion and release hygiene](2026-07-02-promotion-and-release-hygiene.md) |
 | s4–s5 (2026-07-07 – 07-17) | Mobile UI, MCP 421 fix | 1.4.2 mobile drawer; 421 fix (no handoffs; see CHANGELOG) | CHANGELOG `[1.4.2]`, `[1.4.3]` |
 | s006–s007 (2026-09-23 – 09-24) | Versioned mockups + compact sidebar | 1.4.3 and 1.5.0 released; live fold done (876 designs) | [s007 release](2026-09-24-s007-release-1.5.0-handoff.md), then [s006 build](2026-09-24-s006-mockup-versions-handoff.md) + [ledger](2026-09-24-s006-mockup-versions-ledger.md) |
+| s008 (2026-09-24) | 1.5.1 UI patch | Version list collapses again; feed-row buttons on a raised tray; all trackers at 1.5.1 | [s008 release](2026-09-24-s008-release-1.5.1-handoff.md) |
