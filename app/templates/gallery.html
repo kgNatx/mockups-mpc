@@ -250,6 +250,13 @@
     return month + " " + d.getDate();
   }
 
+  // The time a feed row is filed and labelled under: the sort's own key.
+  // "Newest" and "★ First" order by latest_at (the latest version's time), so
+  // a design with a new version today sits under "Today", not its v1 date.
+  function feedTime(mockup) {
+    return state.sort === "oldest" ? mockup.created_at : (mockup.latest_at || mockup.created_at);
+  }
+
   function dateKey(iso) {
     var d = new Date(iso);
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -502,11 +509,11 @@
 
     var lastDate = null;
     filtered.forEach(function (mockup) {
-      var dk = dateKey(mockup.created_at);
+      var dk = dateKey(feedTime(mockup));
       if (dk !== lastDate) {
         lastDate = dk;
         var sep = el("div", "feed-date");
-        sep.appendChild(text(formatDateLabel(mockup.created_at)));
+        sep.appendChild(text(formatDateLabel(feedTime(mockup))));
         feedContainer.appendChild(sep);
       }
       feedContainer.appendChild(createFeedItem(mockup));
@@ -623,7 +630,7 @@
     }
 
     var time = el("span", "feed-time");
-    time.appendChild(text(formatTime(mockup.created_at)));
+    time.appendChild(text(formatTime(feedTime(mockup))));
     meta.appendChild(time);
 
     item.appendChild(meta);
@@ -1284,9 +1291,24 @@
         await loadProjects();
         await loadMockups(true);
         updateGuideLink();
+        followActiveDesign(data);
       }
     } catch (e) {
       // silently skip on network errors
+    }
+  }
+
+  // A viewer that follows the latest (not pinned to a version) moves to a new
+  // version when one lands; the pill's "latest" would otherwise go stale.
+  function followActiveDesign(rows) {
+    if (state.activeMockupId == null || state.activeVersion != null || !activeMockupDetail) return;
+    var id = state.activeMockupId;
+    var fresh = rows.find(function (m) { return m.id === id; })
+      || state.mockups.find(function (m) { return m.id === id; });
+    if (!fresh) return;
+    if (fresh.latest_at !== activeMockupDetail.latest_at
+        || fresh.version_count !== activeMockupDetail.version_count) {
+      fetchAndDisplay(id, null);
     }
   }
 
