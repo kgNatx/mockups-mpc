@@ -1,5 +1,7 @@
 # Handoff — mockup versions + compact sidebar, built, not released (2026-09-24)
 
+> **Update (s007, 2026-09-24):** everything listed below as not done was finished, released as 1.5.0, deployed, and the live fold applied. Current state: [s007 handoff](2026-09-24-s007-release-1.5.0-handoff.md).
+
 Session: s006 (estimate — sessions after s3 left no handoffs: v1.4.2 on 07-07, the 421 fix on 07-17)
 
 ## TL;DR
