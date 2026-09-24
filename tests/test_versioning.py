@@ -1,4 +1,5 @@
 import base64
+import re
 
 import pytest
 
@@ -135,7 +136,8 @@ async def test_resolve(db):
     assert await versioning.resolve(db, mid, 1) == (mid, 1)
     assert await versioning.resolve(db, mid, 9) is None
     assert await versioning.resolve(db, "old") == (mid, 1)
-    assert await versioning.resolve(db, "old", 2) == (mid, 1)  # explicit number ignored
+    assert await versioning.resolve(db, "old", 1) == (mid, 1)  # matches the pinned version
+    assert await versioning.resolve(db, "old", 2) is None  # mismatched number: not found
     assert await versioning.resolve(db, "nope") is None
 
 
@@ -159,7 +161,9 @@ async def test_delete_top_version_rf1(db, tmp_data_dir):
 
 async def test_delete_only_version_refuses(db):
     mid = await _design(db)
-    with pytest.raises(ValueError, match="Cannot delete the only version; delete the mockup instead"):
+    with pytest.raises(ValueError, match=re.escape(
+            "Cannot delete the only version; use delete_mockup without version "
+            "to delete the mockup.")):
         await versioning.delete_version(db, mid, 1)
 
 

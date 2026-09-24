@@ -7,7 +7,7 @@ from app.db import init_db
 from app.mcp_server import (
     _send_mockup, _list_mockups, _get_mockup,
     _update_mockup, _delete_mockup, _tag_mockup, _set_created_at,
-    _split_version, mcp, register_tools,
+    _split_version, mcp,
 )
 
 @pytest.fixture
@@ -387,6 +387,50 @@ async def test_get_mockup_alias_shows_pinned_version(db):
     assert result["view_url"].endswith("/v/1")
 
 
+@pytest.mark.asyncio
+async def test_get_mockup_alias_with_mismatched_version_raises(db):
+    # fix round 1, Entry 3 item 1: an alias pinned to v1 must not resolve for
+    # a different explicit version.
+    from app import db as dbm
+
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    await _update_mockup(db=db, id=sent["id"], content="<p>2</p>", content_type="html")
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=sent["id"], number=1)
+    with pytest.raises(ValueError, match="not found"):
+        await _get_mockup(db=db, id="old-link", version=2)
+
+
+@pytest.mark.asyncio
+async def test_update_mockup_content_via_alias(db):
+    # fix round 1, Entry 3 item 2: _update_mockup accepts an alias id.
+    from app import db as dbm
+
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=[])
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=sent["id"], number=1)
+    result = await _update_mockup(db=db, id="old-link", content="<p>2</p>", content_type="html")
+    assert result["id"] == sent["id"]
+    assert result["version"] == 2
+    assert [v["number"] for v in result["versions"]] == [2, 1]
+
+
+@pytest.mark.asyncio
+async def test_tag_mockup_via_alias(db):
+    # fix round 1, Entry 3 item 2: _tag_mockup accepts an alias id.
+    from app import db as dbm
+
+    sent = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                              content="<p>1</p>", content_type="html", tags=["ui"])
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=sent["id"], number=1)
+    result = await _tag_mockup(db=db, id="old-link", add=["landing"], remove=["ui"])
+    assert result["id"] == sent["id"]
+    assert result["tags"] == ["landing"]
+
+
 # --- split_version (chunk 2, new tool) ---
 
 @pytest.mark.asyncio
@@ -429,13 +473,22 @@ async def test_delete_last_version_raises(db):
 
 
 @pytest.mark.asyncio
-async def test_delete_last_version_via_mcp_tool_raises_tool_error(db):
-    register_tools(lambda: db)
-    sent = await _send_mockup(db=db, project="P", title="T", description=None,
-                              content="<p>x</p>", content_type="html", tags=[])
-    async with Client(mcp) as client:
+async def test_delete_last_version_via_mcp_tool_raises_tool_error(client):
+    # `client` (the httpx/ASGI fixture) already runs app_lifespan, which calls
+    # register_tools once against ITS OWN db and keeps it open for the test's
+    # duration. Registering again here (on the shared module-level `mcp`) would
+    # leave stale closures pointing at a since-closed db for whichever test
+    # runs next — see task-2-review.md Minor 7. Reuse the existing registration
+    # instead of mutating the global server ourselves.
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>x</p>", "text/html")},
+        data={"project": "P", "title": "T"},
+    )
+    mockup_id = resp.json()["id"]
+    async with Client(mcp) as mcp_client:
         with pytest.raises(ToolError):
-            await client.call_tool("delete_mockup", {"id": sent["id"], "version": 1})
+            await mcp_client.call_tool("delete_mockup", {"id": mockup_id, "version": 1})
 
 
 # --- set_created_at: version param (chunk 2) ---

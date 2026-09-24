@@ -174,7 +174,9 @@ async def delete_version(db: aiosqlite.Connection, mockup_id: str, number: int) 
         if version is None:
             raise ValueError(f"Version not found: {mockup_id} v{number}")
         if design["version_count"] <= 1:
-            raise ValueError("Cannot delete the only version; delete the mockup instead")
+            raise ValueError(
+                "Cannot delete the only version; use delete_mockup without version "
+                "to delete the mockup.")
         await queries.delete_version_row(db, mockup_id, number)
         await queries.refresh_design_mirror(db, mockup_id)
     # After commit: a failed unlink leaves an orphan file, never a row without a file.
@@ -216,7 +218,10 @@ async def resolve(db: aiosqlite.Connection, id: str,
                   number: int | None = None) -> tuple[str, int] | None:
     """Map a design or alias id (plus optional version) to (design id, version number).
 
-    An alias is pinned to one version, so an explicit number is ignored for it.
+    An alias is pinned to one version. An explicit `number` must match that
+    pinned version or resolution fails (returns None) — `/v/{n}` names a fixed
+    file, so an alias id combined with a mismatched `number` must not silently
+    fall back to whatever the alias happens to point at.
     """
     if await queries.get_mockup(db, id) is not None:
         if number is None:
@@ -225,6 +230,8 @@ async def resolve(db: aiosqlite.Connection, id: str,
         return (id, number) if await queries.get_version(db, id, number) else None
     alias = await queries.get_alias(db, id)
     if alias is None:
+        return None
+    if number is not None and number != alias["number"]:
         return None
     if await queries.get_version(db, alias["mockup_id"], alias["number"]) is None:
         return None

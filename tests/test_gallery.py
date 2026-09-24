@@ -176,3 +176,51 @@ async def test_view_serves_each_version_headers_independently_rf2(client):
     assert resp.headers["content-type"].startswith("text/html")
     assert "sandbox" in resp.headers["content-security-policy"]
     assert resp.headers["x-content-type-options"] == "nosniff"
+
+
+# --- alias id + mismatched explicit version (fix round 1, Entry 3 item 1) ---
+
+@pytest.mark.asyncio
+async def test_view_alias_with_mismatched_version_returns_404(client):
+    # An alias is pinned to one version (spec §7): asking for a DIFFERENT
+    # version through it must 404, not silently serve the pinned file.
+    from app.db import init_db, insert_alias, transaction
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>v2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id="old-link", mockup_id=mid, number=1)
+    await db.close()
+
+    resp = await client.get("/view/old-link/v/2")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_view_alias_with_matching_version_returns_200(client):
+    from app.db import init_db, insert_alias, transaction
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id="old-link", mockup_id=mid, number=1)
+    await db.close()
+
+    resp = await client.get("/view/old-link/v/1")
+    assert resp.status_code == 200
+    assert resp.text == "<p>v1</p>"

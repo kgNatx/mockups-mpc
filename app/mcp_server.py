@@ -155,9 +155,11 @@ async def _update_mockup(*, db: aiosqlite.Connection, id: str,
                           title: str | None = None, description=UNSET,
                           tags: list[str] | None = None, content: str | None = None,
                           content_type: str | None = None) -> dict:
-    existing = await get_mockup(db, id)
-    if existing is None:
+    resolved = await versioning.resolve(db, id)
+    if resolved is None:
         raise ValueError(f"Mockup not found: {id}")
+    mockup_id, _ = resolved  # id may be an alias; every write below targets the design
+    existing = await get_mockup(db, mockup_id)
     if content_type is not None and content is None:
         raise ValueError(
             "content_type can only be changed by also supplying new content, "
@@ -170,14 +172,14 @@ async def _update_mockup(*, db: aiosqlite.Connection, id: str,
         new_description = existing["description"] if description is UNSET else description
         ct = content_type or existing["content_type"]
         await versioning.add_version(
-            db, id, title=new_title, description=new_description,
+            db, mockup_id, title=new_title, description=new_description,
             content_type=ct, content=content)
         if tags is not None:
-            await db_update_mockup(db, id, tags=tags)
+            await db_update_mockup(db, mockup_id, tags=tags)
     else:
         # Metadata-only: still renames the design.
-        await db_update_mockup(db, id, title=title, description=description, tags=tags)
-    return await _get_mockup(db=db, id=id)
+        await db_update_mockup(db, mockup_id, title=title, description=description, tags=tags)
+    return await _get_mockup(db=db, id=mockup_id)
 
 
 async def _delete_mockup(*, db: aiosqlite.Connection, id: str,
@@ -198,16 +200,18 @@ async def _split_version(*, db: aiosqlite.Connection, id: str, version: int) -> 
 
 async def _tag_mockup(*, db: aiosqlite.Connection, id: str,
                        add: list[str] | None, remove: list[str] | None) -> dict:
-    existing = await get_mockup(db, id)
-    if existing is None:
+    resolved = await versioning.resolve(db, id)
+    if resolved is None:
         raise ValueError(f"Mockup not found: {id}")
+    mockup_id, _ = resolved  # id may be an alias; tags live on the design
+    existing = await get_mockup(db, mockup_id)
     current = set(existing["tags"])
     if add:
         current.update(add)
     if remove:
         current -= set(remove)
-    await db_update_mockup(db, id, tags=sorted(current))
-    return await _get_mockup(db=db, id=id)
+    await db_update_mockup(db, mockup_id, tags=sorted(current))
+    return await _get_mockup(db=db, id=mockup_id)
 
 
 async def _set_created_at(*, db: aiosqlite.Connection, id: str,

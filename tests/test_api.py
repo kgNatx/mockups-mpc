@@ -504,3 +504,29 @@ async def test_api_delete_unknown_version_returns_404(client):
     mid = resp.json()["id"]
     resp = await client.delete(f"/api/mockups/{mid}/versions/99")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_api_delete_version_via_alias_with_mismatched_number_returns_404(client):
+    # fix round 1, Entry 3 item 1: an alias pinned to v1 must not let a caller
+    # delete v2 (or any other version) by tacking a different number onto it.
+    from app.db import init_db, insert_alias, transaction
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id="old-link", mockup_id=mid, number=1)
+    await db.close()
+
+    resp = await client.delete("/api/mockups/old-link/versions/2")
+    assert resp.status_code == 404
