@@ -238,3 +238,18 @@ async def test_view_alias_with_matching_version_returns_200(client):
     resp = await client.get("/view/old-link/v/1")
     assert resp.status_code == 200
     assert resp.text == "<p>v1</p>"
+
+
+@pytest.mark.asyncio
+async def test_view_svg_version_is_sandboxed(client):
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.svg", svg, "image/svg+xml")},
+        data={"project": "Sec", "title": "Icon"},
+    )
+    vid = resp.json()["id"]
+    resp = await client.get(f"/view/{vid}/v/1")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/svg+xml")
+    assert "sandbox" in resp.headers["content-security-policy"]

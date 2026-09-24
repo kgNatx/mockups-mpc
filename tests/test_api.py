@@ -531,3 +531,36 @@ async def test_api_delete_version_via_alias_with_mismatched_number_returns_404(c
 
     resp = await client.delete("/api/mockups/old-link/versions/2")
     assert resp.status_code == 404
+
+
+# --- s007 deferred minors ---
+
+async def _alias_for_new_design(client, alias_id="old-link"):
+    from app.db import init_db, insert_alias, transaction
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id=alias_id, mockup_id=mid, number=1)
+    await db.close()
+    return mid
+
+
+@pytest.mark.asyncio
+async def test_api_set_favorite_by_alias_stars_the_design(client):
+    mid = await _alias_for_new_design(client)
+    resp = await client.put("/api/mockups/old-link/favorite", json={"favorite": True})
+    assert resp.status_code == 200
+    assert resp.json()["id"] == mid and resp.json()["favorite"] == 1
+
+
+def test_versioning_error_status_uses_exception_types():
+    from app import versioning
+    from app.routes.api import _versioning_error_status
+    assert _versioning_error_status(versioning.NotFound("anything")) == 404
+    assert _versioning_error_status(versioning.Conflict("says not found")) == 409
+    assert _versioning_error_status(ValueError("not found")) == 400

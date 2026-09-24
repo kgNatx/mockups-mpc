@@ -19,9 +19,11 @@ def _parse_fold(value: str | None) -> bool:
 
 
 def _versioning_error_status(exc: ValueError) -> int:
-    # versioning.py's "not found" messages (unknown design/version) are 404;
-    # its "Cannot ... the only version" messages are 409.
-    return 404 if "not found" in str(exc).lower() else 409
+    if isinstance(exc, versioning.NotFound):
+        return 404
+    if isinstance(exc, versioning.Conflict):
+        return 409
+    return 400
 
 EXT_TO_TYPE = {
     ".html": "html",
@@ -77,10 +79,15 @@ class FavoriteBody(BaseModel):
 
 @router.put("/mockups/{mockup_id}/favorite")
 async def api_set_favorite(request: Request, mockup_id: str, body: FavoriteBody):
-    ok = await set_favorite(request.app.state.db, mockup_id, body.favorite)
+    # An alias (a folded-away id) stars the design it now belongs to.
+    resolved = await versioning.resolve(request.app.state.db, mockup_id)
+    if resolved is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    design_id, _ = resolved
+    ok = await set_favorite(request.app.state.db, design_id, body.favorite)
     if not ok:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    row = await get_mockup(request.app.state.db, mockup_id)
+    row = await get_mockup(request.app.state.db, design_id)
     return row
 
 

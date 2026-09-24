@@ -93,8 +93,11 @@ async def create_design(db: aiosqlite.Connection, *, project: str, title: str,
 
 async def add_version(db: aiosqlite.Connection, mockup_id: str, *, title: str,
                       description: str | None, content_type: str, content: str,
-                      folded: bool = False) -> VersionRef:
-    """Append a version. The file is written first and removed if the db write fails."""
+                      folded: bool = False, add_tags: list[str] | None = None) -> VersionRef:
+    """Append a version. The file is written first and removed if the db write fails.
+
+    `add_tags` are merged into the design's tags in the same transaction.
+    """
     file_path = None
     try:
         async with queries.transaction(db):
@@ -124,6 +127,10 @@ async def add_version(db: aiosqlite.Connection, mockup_id: str, *, title: str,
                 # First time past v1: the design is now named for the series. A
                 # design that ever had more versions keeps its (maybe manual) title.
                 await queries.update_design_title(db, mockup_id, base_title(existing[-1]["title"]))
+            if add_tags:
+                union = sorted(set(design["tags"]) | set(add_tags))
+                if union != sorted(design["tags"]):
+                    await queries.update_design_fields(db, mockup_id, tags=union)
             await queries.refresh_design_mirror(db, mockup_id)
     except BaseException:
         # Outside the transaction block, so a failed COMMIT also removes the file.

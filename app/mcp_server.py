@@ -7,7 +7,7 @@ from pydantic import Field
 
 from app import config, versioning
 from app.db import (
-    get_mockup, get_versions, list_mockups, list_projects,
+    get_alias, get_mockup, get_versions, list_mockups, list_projects,
     update_mockup as db_update_mockup, UNSET,
 )
 from app.storage import slugify_project
@@ -37,9 +37,11 @@ async def _resolve_or_raise(db: aiosqlite.Connection, id: str,
     resolved = await versioning.resolve(db, id, version)
     if resolved is not None:
         return resolved
-    if version is not None and await get_mockup(db, id) is not None:
-        raise ValueError(f"Version not found: {id} v{version}")
-    raise ValueError(f"Mockup not found: {id}")
+    # The id is known (design or alias) but that version isn't: say which.
+    if version is not None and (await get_mockup(db, id) is not None
+                                or await get_alias(db, id) is not None):
+        raise versioning.NotFound(f"Version not found: {id} v{version}")
+    raise versioning.NotFound(f"Mockup not found: {id}")
 
 
 def _build_send_response(design: dict, ref: versioning.VersionRef) -> dict:
@@ -76,7 +78,6 @@ async def _send_mockup(*, db: aiosqlite.Connection, project: str, title: str,
                         fold: bool = True) -> dict:
     slug = slugify_project(project)
     tags = tags or []
-    added_version = False
 
     if parent is not None:
         resolved = await versioning.resolve(db, parent)
@@ -84,20 +85,30 @@ async def _send_mockup(*, db: aiosqlite.Connection, project: str, title: str,
             raise versioning.UnknownParent(f"Unknown parent: {parent}")
         mockup_id, _ = resolved
         parent_design = await get_mockup(db, mockup_id)
+        # None when the parent is deleted between resolve and here.
+        if parent_design is None:
+            raise versioning.UnknownParent(f"Unknown parent: {parent}")
         if parent_design["project_slug"] != slug:
             raise ValueError(f"Parent {parent!r} belongs to a different project")
-        ref = await versioning.add_version(
-            db, mockup_id, title=title, description=description,
-            content_type=content_type, content=content, folded=False)
-        added_version = True
+        try:
+            ref = await versioning.add_version(
+                db, mockup_id, title=title, description=description,
+                content_type=content_type, content=content, folded=False, add_tags=tags)
+        except versioning.NotFound:
+            # Deleted after the check above, before add_version took the lock.
+            raise versioning.UnknownParent(f"Unknown parent: {parent}") from None
     elif fold:
         target = await versioning.find_fold_target(db, project_slug=slug, title=title)
+        ref = None
         if target is not None:
-            ref = await versioning.add_version(
-                db, target, title=title, description=description,
-                content_type=content_type, content=content, folded=True)
-            added_version = True
-        else:
+            try:
+                ref = await versioning.add_version(
+                    db, target, title=title, description=description,
+                    content_type=content_type, content=content, folded=True,
+                    add_tags=tags)
+            except versioning.NotFound:
+                pass  # The fold target was deleted meanwhile: nothing to fold into.
+        if ref is None:
             ref = await versioning.create_design(
                 db, project=project, title=title, description=description,
                 content_type=content_type, content=content, tags=tags)
@@ -105,12 +116,6 @@ async def _send_mockup(*, db: aiosqlite.Connection, project: str, title: str,
         ref = await versioning.create_design(
             db, project=project, title=title, description=description,
             content_type=content_type, content=content, tags=tags)
-
-    if added_version and tags:
-        current = await get_mockup(db, ref.mockup_id)
-        union = sorted(set(current["tags"]) | set(tags))
-        if union != sorted(current["tags"]):
-            await db_update_mockup(db, ref.mockup_id, tags=union)
 
     design = await get_mockup(db, ref.mockup_id)
     return _build_send_response(design, ref)
@@ -159,7 +164,7 @@ async def _update_mockup(*, db: aiosqlite.Connection, id: str,
                           content_type: str | None = None) -> dict:
     resolved = await versioning.resolve(db, id)
     if resolved is None:
-        raise ValueError(f"Mockup not found: {id}")
+        raise versioning.NotFound(f"Mockup not found: {id}")
     mockup_id, _ = resolved  # id may be an alias; every write below targets the design
     existing = await get_mockup(db, mockup_id)
     if content_type is not None and content is None:
@@ -205,7 +210,7 @@ async def _tag_mockup(*, db: aiosqlite.Connection, id: str,
                        add: list[str] | None, remove: list[str] | None) -> dict:
     resolved = await versioning.resolve(db, id)
     if resolved is None:
-        raise ValueError(f"Mockup not found: {id}")
+        raise versioning.NotFound(f"Mockup not found: {id}")
     mockup_id, _ = resolved  # id may be an alias; tags live on the design
     existing = await get_mockup(db, mockup_id)
     current = set(existing["tags"])
@@ -227,7 +232,9 @@ async def _set_created_at(*, db: aiosqlite.Connection, id: str,
         raise ValueError(f"Invalid ISO 8601 datetime: {created_at!r}")
     mockup_id, num = await _resolve_or_raise(db, id, version)
     await versioning.set_version_created_at(db, mockup_id, num, created_at)
-    return await _get_mockup(db=db, id=id)
+    # The design, not the (maybe alias) id the caller passed: an alias would
+    # return its pinned version's view instead of the design's.
+    return await _get_mockup(db=db, id=mockup_id)
 
 
 # --- FastMCP tool wrappers ---

@@ -576,3 +576,90 @@ async def test_send_mockup_auto_folds_series_with_two_parentheticals(db):
     v3 = await _send_mockup(db=db, project="P", title="Foo (a) (b) v3", description=None,
                             content="<p>3</p>", content_type="html", tags=[])
     assert (v3["id"], v3["version"], v3["folded"]) == (a["id"], 3, True)
+
+
+# --- s007 deferred minors ---
+
+async def _hero_with_alias(db):
+    """Design 'Hero' with v1 + v2, and alias 'old-link' pinned to v1."""
+    from app import db as dbm
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                       content="<p>2</p>", content_type="html", tags=[], parent=a["id"])
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-link", mockup_id=a["id"], number=1)
+    return a["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_mockup_alias_with_wrong_version_says_version_not_found(db):
+    await _hero_with_alias(db)
+    with pytest.raises(versioning.NotFound, match="Version not found: old-link v2"):
+        await _get_mockup(db=db, id="old-link", version=2)
+
+
+@pytest.mark.asyncio
+async def test_set_created_at_by_alias_returns_the_design(db):
+    mid = await _hero_with_alias(db)
+    result = await _set_created_at(db=db, id="old-link", created_at="2025-01-15T12:00:00+00:00")
+    assert result["id"] == mid
+    assert result["view_url"].endswith(f"/view/{mid}")  # the design, not the alias's pinned v1
+    assert result["created_at"] == "2025-01-15T12:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_parent_deleted_after_resolve_is_unknown_parent(db, monkeypatch):
+    async def resolves_to_gone(db, id, number=None):
+        return ("gone", 1)
+    monkeypatch.setattr(versioning, "resolve", resolves_to_gone)
+    with pytest.raises(versioning.UnknownParent, match="Unknown parent: p1"):
+        await _send_mockup(db=db, project="P", title="T", description=None,
+                           content="<p>x</p>", content_type="html", tags=[], parent="p1")
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_parent_deleted_before_add_version_is_unknown_parent(db, monkeypatch):
+    a = await _send_mockup(db=db, project="P", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+
+    async def gone(*args, **kwargs):
+        raise versioning.NotFound("Mockup not found: x")
+    monkeypatch.setattr(versioning, "add_version", gone)
+    with pytest.raises(versioning.UnknownParent):
+        await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                           content="<p>2</p>", content_type="html", tags=[], parent=a["id"])
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_fold_target_deleted_meanwhile_creates_design(db, monkeypatch):
+    async def stale_target(db, *, project_slug, title):
+        return "gone"
+    monkeypatch.setattr(versioning, "find_fold_target", stale_target)
+    result = await _send_mockup(db=db, project="P", title="Hero v2", description=None,
+                                content="<p>2</p>", content_type="html", tags=[])
+    assert result["folded"] is False and result["version"] == 1
+    assert result["id"] != "gone"
+
+
+@pytest.mark.asyncio
+async def test_send_mockup_parent_other_project_adds_no_version(db):
+    a = await _send_mockup(db=db, project="ProjA", title="Hero", description=None,
+                           content="<p>1</p>", content_type="html", tags=[])
+    with pytest.raises(ValueError, match="different project"):
+        await _send_mockup(db=db, project="ProjB", title="Hero v2", description=None,
+                           content="<p>2</p>", content_type="html", tags=[], parent=a["id"])
+    got = await _get_mockup(db=db, id=a["id"])
+    assert got["version_count"] == 1 and [v["number"] for v in got["versions"]] == [1]
+
+
+@pytest.mark.asyncio
+async def test_auto_fold_unions_tags(db):
+    a = await _send_mockup(db=db, project="P", title="Privacy page — draft 1",
+                           description=None, content="<p>1</p>", content_type="html",
+                           tags=["ui", "legal"])
+    result = await _send_mockup(db=db, project="P", title="Privacy page — draft 2",
+                                description=None, content="<p>2</p>", content_type="html",
+                                tags=["legal", "mobile"])
+    assert result["id"] == a["id"] and result["folded"] is True
+    assert result["tags"] == ["legal", "mobile", "ui"]
