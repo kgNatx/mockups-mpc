@@ -81,7 +81,7 @@ async def _refresh_guide(db) -> None:
 
     The stored latest is replaced only when this app wrote it and nobody
     edited it since (its stamp matches its body), or when it is the design's
-    only version (a guide seeded before stamps existed). A version the user
+    only version and is v1 (a guide seeded before stamps existed). A version the user
     added on top, including an edited copy of the guide, is kept.
 
     The reads below decide the write outside a transaction (project rule:
@@ -105,8 +105,10 @@ async def _refresh_guide(db) -> None:
     if digest is not None:
         if digest == hashlib.sha256(GUIDE_PATH.read_bytes()).hexdigest():
             return  # already the current guide
-    elif len(versions) > 1:
-        return  # the user's own version on top: leave it
+    elif len(versions) > 1 or latest["number"] != 1:
+        # A legacy (pre-stamp) seed is always a lone v1, since the migration
+        # gives every old mockup a v1. Anything else is the user's own version.
+        return
     await versioning.add_version(
         db, guide_id, title=GUIDE_TITLE, description=latest["description"],
         content_type="html", content=stamped.decode("utf-8"))

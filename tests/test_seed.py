@@ -1,9 +1,9 @@
+import hashlib
+
 import pytest
 
 from app import versioning
 from app.db import get_mockup, get_versions, init_db, list_design_titles
-import hashlib
-
 from app.seed import _stamped_guide, refresh_guide, seed_if_empty
 
 
@@ -124,3 +124,13 @@ async def test_seeded_guide_is_stamped(db, tmp_data_dir):
     await seed_if_empty(db)
     v1 = (await get_versions(db, await _guide_id(db)))[0]
     assert (tmp_data_dir / v1["file_path"]).read_bytes() == _stamped_guide()
+
+
+async def test_refresh_keeps_a_lone_user_version(db, tmp_data_dir):
+    await seed_if_empty(db)
+    gid = await _guide_id(db)
+    await versioning.add_version(db, gid, title="Setup Guide", description=None,
+                                 content_type="html", content="<p>my notes</p>")
+    await versioning.delete_version(db, gid, 1)
+    await refresh_guide(db)
+    assert [v["number"] for v in await get_versions(db, gid)] == [2]
