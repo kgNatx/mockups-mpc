@@ -245,7 +245,8 @@ Mockup: [Collapsed bar final](https://mockups.hippienet.wtf/?mockup=bacb9428-25f
 
 ### 8.3 Viewer bar
 
-- A version pill after the title: `v{n} · latest`, or `v{n} of {count}` in amber on an older version.
+- A version pill after the title: `v{n} · latest`, or `v{n} of v{latest}` in amber on an older version.
+  (Amended s007: was `v{n} of {count}`, which reads "v5 of 3" once deleted versions leave gaps.)
 - Copy direct link and pop-out use `/view/{id}` on the latest (link follows future versions) and
   `/view/{id}/v/{n}` on an older version.
 - The details popover gains a "Versions" line.

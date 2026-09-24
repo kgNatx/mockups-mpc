@@ -527,26 +527,24 @@ body {
 
 @media (hover: none) {
   .feed-action-btn { opacity: 0.6; }
-  /* The actions are always visible here, so reserve their width (8px inset +
-     4 × 24px buttons + 3 × 2px gaps, plus breathing room) instead of letting
-     them sit over the title and meta line. */
-  .feed-item { padding-right: 114px; }
-  .sidebar-feed .feed-item.has-fav .feed-title { padding-right: 0; }
+  /* The actions are always visible here. They sit on the title line only, and
+     the title reserves their width (4 × 24px buttons + 3 × 2px gaps), so the
+     meta line keeps the row's full width: a project badge beside a version
+     chip no longer shrinks to one letter. */
+  .feed-actions { top: 6px; transform: none; }
+  .sidebar-feed .feed-item .feed-title,
+  .sidebar-feed .feed-item.has-fav .feed-title { padding-right: 102px; }
 }
 
-/* Visible focus ring for keyboard users on the otherwise non-semantic,
-   click-built interactive elements. */
+/* The app's cyan focus ring for keyboard users: on the non-semantic,
+   click-built interactive elements, and (R19b) on real <button>/<a>
+   elements that would otherwise show the browser's default ring. */
 .feed-item:focus-visible,
 .scope-item:focus-visible,
 .feed-action-btn:focus-visible,
 .sort-opt:focus-visible,
-.ver-row:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-/* R19b: real <button>/<a> elements that otherwise fall back to the browser's
-   default focus ring, inconsistent with the rest of the app's cyan rings. */
+.ver-row:focus-visible,
+.ver-split:focus-visible,
 .scope-btn:focus-visible,
 .fav-toggle:focus-visible,
 .brand-guide-btn:focus-visible {
@@ -758,11 +756,6 @@ body {
 .ver-split:hover {
   color: var(--accent);
   background: var(--bg-active);
-}
-
-.ver-split:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
 }
 
 .ver-split.failed {

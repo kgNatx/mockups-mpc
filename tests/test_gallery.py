@@ -253,3 +253,14 @@ async def test_view_svg_version_is_sandboxed(client):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("image/svg+xml")
     assert "sandbox" in resp.headers["content-security-policy"]
+
+
+@pytest.mark.asyncio
+async def test_favicon_is_served(client):
+    resp = await client.get("/favicon.ico")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/svg+xml")
+    resp = await client.get("/")
+    assert '<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">' in resp.text
+    resp = await client.get("/static/favicon.svg")
+    assert resp.status_code == 200

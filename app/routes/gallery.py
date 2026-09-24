@@ -11,6 +11,7 @@ from app.config import get_data_dir, APP_VERSION
 router = APIRouter()
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+FAVICON_PATH = Path(__file__).parent.parent / "static" / "favicon.svg"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 MIME_MAP = {
@@ -24,6 +25,13 @@ MIME_MAP = {
 @router.get("/", response_class=HTMLResponse)
 async def gallery(request: Request):
     return templates.TemplateResponse(request, "gallery.html", {"version": APP_VERSION})
+
+
+@router.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    # Browsers ask for /favicon.ico on pages with no <link rel="icon">, such as
+    # a popped-out mockup at /view/{id}. Modern browsers accept an SVG here.
+    return FileResponse(str(FAVICON_PATH), media_type="image/svg+xml")
 
 
 async def _serve_version(request: Request, mockup_id: str, number: int | None):

@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mockups MPC</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/style.css?v={{ version }}">
 </head>
 <body>
@@ -130,8 +131,13 @@
 
   // Version lists fetched per design id (`/api/mockups/{id}`), for the feed
   // row's version chip. Cleared on every feed reload (not on infinite-scroll
-  // append), per the task brief.
+  // append), and pruned to the loaded rows on every render.
   var versionsCache = {};
+
+  // Design ids whose version history is open. Every feed render tears the
+  // rows down (see renderFeed), so this — not the DOM — is what says which
+  // lists to reopen afterwards.
+  var openVersionLists = {};
 
   // Bumped on every fetchAndDisplay call, captured at call time. Two clicks
   // in quick succession (e.g. v2 then v3) both fetch; whichever response
@@ -496,8 +502,8 @@
     var filtered = state.mockups;
 
     // Always clear and re-render with date separators. Any open .ver-list
-    // (a feed row's expanded version history) is torn down with its row —
-    // it isn't restored on re-render; see createFeedItem.
+    // (a feed row's expanded version history) is torn down with its row and
+    // reopened below from openVersionLists.
     var oldItems = feedContainer.querySelectorAll(".feed-item, .feed-date, .ver-list");
     oldItems.forEach(function (node) { node.remove(); });
 
@@ -518,6 +524,27 @@
       }
       feedContainer.appendChild(createFeedItem(mockup));
     });
+
+    // Drop cached/open state for designs no longer in the feed, then reopen
+    // the history lists that were open before this render tore them down.
+    var loaded = {};
+    state.mockups.forEach(function (m) { loaded[m.id] = m; });
+    Object.keys(versionsCache).forEach(function (id) { if (!loaded[id]) delete versionsCache[id]; });
+    Object.keys(openVersionLists).forEach(function (id) {
+      var mockup = loaded[id];
+      var item = findFeedItem(id);
+      var chip = item && item.querySelector(".ver-chip");
+      if (!mockup || !chip) { delete openVersionLists[id]; return; }
+      toggleVersionList(mockup, item, chip);
+    });
+  }
+
+  function findFeedItem(id) {
+    var found = null;
+    feedContainer.querySelectorAll(".feed-item").forEach(function (row) {
+      if (row.getAttribute("data-id") === id) found = row;
+    });
+    return found;
   }
 
   function createFeedItem(mockup) {
@@ -647,9 +674,12 @@
     if (list && list.classList.contains("ver-list")) {
       var nowOpen = list.classList.toggle("open");
       chip.classList.toggle("open", nowOpen);
+      if (nowOpen) openVersionLists[mockup.id] = true;
+      else delete openVersionLists[mockup.id];
       return;
     }
 
+    openVersionLists[mockup.id] = true;
     list = el("div", "ver-list open");
     chip.classList.add("open");
     item.insertAdjacentElement("afterend", list);
@@ -693,10 +723,8 @@
         if (isLatest) selectMockup(mockup.id);
         else selectMockup(mockup.id, v.number);
       };
-      row.addEventListener("click", function (e) {
-        if (e.target.closest(".ver-split")) return;
-        activate();
-      });
+      // The split button stops its own click, so a click here is never a split.
+      row.addEventListener("click", activate);
       makeActivatable(row, activate);
 
       var num = el("span", "ver-row-num");
@@ -734,10 +762,7 @@
   // elsewhere (e.g. clicking the feed row itself, or a version row in the
   // list) without waiting for another fetch.
   function refreshOpenVersionList(mockupId) {
-    var item = null;
-    feedContainer.querySelectorAll(".feed-item").forEach(function (row) {
-      if (row.getAttribute("data-id") === mockupId) item = row;
-    });
+    var item = findFeedItem(mockupId);
     if (!item) return;
     var list = item.nextElementSibling;
     if (!list || !list.classList.contains("ver-list") || !list.classList.contains("open")) return;
@@ -941,13 +966,13 @@
     Promise.all([loadProjects(), loadFavoritesCount()]).then(renderProjects);
   }
 
-  function createEmptyViewer() {
+  function createEmptyViewer(message) {
     var wrap = el("div", "viewer-empty");
     var icon = el("div", "viewer-empty-icon");
     icon.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="9"/></svg>');
     wrap.appendChild(icon);
     var txt = el("div", "viewer-empty-text");
-    txt.appendChild(text("No mockup selected"));
+    txt.appendChild(text(message || "No mockup selected"));
     wrap.appendChild(txt);
     return wrap;
   }
@@ -972,8 +997,9 @@
     // fetch anyway: the pill's "latest" number can differ from version_count
     // once a version has been deleted (numbers are never reused, so gaps are
     // possible), and only /api/mockups/{id} returns the true one. An id with
-    // no summary at all (not yet loaded, or an alias) also needs the fetch.
-    if (!summary || summary.version_count >= 2) {
+    // no summary at all (not yet loaded, or an alias) also needs the fetch,
+    // and so does a pinned version: only the fetch can say it doesn't exist.
+    if (!summary || summary.version_count >= 2 || state.activeVersion != null) {
       fetchAndDisplay(id, state.activeVersion);
       return;
     }
@@ -990,6 +1016,21 @@
     var mockup;
     try {
       var resp = await fetch(url);
+      if (resp.status === 404) {
+        if (mySeq !== fetchSeq || state.activeMockupId !== id) return;
+        if (version != null) {
+          // A pinned link to a version that is gone (deleted, split away, or
+          // an alias with another number): open the design's latest instead
+          // of leaving the viewer empty. The pill shows which version it is.
+          state.activeVersion = null;
+          fetchAndDisplay(id, null);
+        } else {
+          deselectMockup();
+          clearChildren(viewer);
+          viewer.appendChild(createEmptyViewer("Mockup not found"));
+        }
+        return;
+      }
       if (!resp.ok) return;
       mockup = await resp.json();
     } catch (e) { return; /* network error — leave the current view in place */ }
@@ -1062,13 +1103,15 @@
       // mockup.versions is newest-first; its first entry is the true latest
       // version number, which can differ from version_count once a version
       // has been deleted (numbers are never reused, so gaps are possible).
+      // An older version names the latest number, not the count: with gaps,
+      // "v5 of 3" would be nonsense.
       var latestNumber = (mockup.versions && mockup.versions.length) ? mockup.versions[0].number : mockup.version;
       var shownVersion = mockup.version;
       var isLatest = shownVersion === latestNumber;
       var pill = el("span", "ver-pill" + (isLatest ? "" : " old"));
       pill.appendChild(text(isLatest
         ? ("v" + shownVersion + " · latest")
-        : ("v" + shownVersion + " of " + mockup.version_count)));
+        : ("v" + shownVersion + " of v" + latestNumber)));
       titleWrap.appendChild(pill);
     }
 
@@ -1262,9 +1305,14 @@
 
   /* ── Auto-refresh ── */
   var POLL_INTERVAL = 5000;
-  var lastPollSig = null;
+  // The last probe: its URL and a signature of what it returned. A change is
+  // only a change when the same probe answers differently.
+  var lastPoll = null;
 
-  async function pollForUpdates() {
+  // `baselineOnly === true` records the current state without acting on it
+  // (init calls this right after the first load, so a version landing within
+  // the first poll interval is still seen as a change).
+  async function pollForUpdates(baselineOnly) {
     try {
       // Probe the current view and build a signature over id + updated_at +
       // favorite. Comparing the whole signature (not just the newest-inserted
@@ -1285,9 +1333,16 @@
         return m.id + ":" + m.updated_at + ":" + (m.favorite ? 1 : 0);
       }).join("|");
 
-      if (lastPollSig === null) { lastPollSig = sig; return; }
-      if (sig !== lastPollSig) {
-        lastPollSig = sig;
+      // A different probe URL (another scope or search, or more rows scrolled
+      // in) is a new baseline, not a change: the feed was just loaded for it.
+      // Comparing across sizes made every infinite-scroll page look like a
+      // change, and the reload threw the scrolled-in rows away.
+      if (baselineOnly === true || lastPoll === null || lastPoll.url !== url) {
+        lastPoll = { url: url, sig: sig };
+        return;
+      }
+      if (sig !== lastPoll.sig) {
+        lastPoll.sig = sig;
         await loadProjects();
         await loadMockups(true);
         updateGuideLink();
@@ -1298,18 +1353,42 @@
     }
   }
 
-  // A viewer that follows the latest (not pinned to a version) moves to a new
-  // version when one lands; the pill's "latest" would otherwise go stale.
+  // When the active design gains or loses a version: a viewer that follows
+  // the latest moves to the new latest; a pinned viewer keeps its content and
+  // only refreshes its pill and details, which would otherwise go stale.
   function followActiveDesign(rows) {
-    if (state.activeMockupId == null || state.activeVersion != null || !activeMockupDetail) return;
+    if (state.activeMockupId == null || !activeMockupDetail) return;
     var id = state.activeMockupId;
     var fresh = rows.find(function (m) { return m.id === id; })
       || state.mockups.find(function (m) { return m.id === id; });
     if (!fresh) return;
-    if (fresh.latest_at !== activeMockupDetail.latest_at
-        || fresh.version_count !== activeMockupDetail.version_count) {
-      fetchAndDisplay(id, null);
-    }
+    if (fresh.latest_at === activeMockupDetail.latest_at
+        && fresh.version_count === activeMockupDetail.version_count) return;
+    if (state.activeVersion == null) fetchAndDisplay(id, null);
+    else refreshPinnedMeta(id, state.activeVersion);
+  }
+
+  async function refreshPinnedMeta(id, version) {
+    var mySeq = fetchSeq;
+    var mockup;
+    try {
+      var resp = await fetch("/api/mockups/" + encodeURIComponent(id) + "?v=" + version);
+      if (resp.status === 404) {
+        // The pinned version itself is gone: fall back like a stale link does.
+        if (mySeq === fetchSeq && state.activeMockupId === id) {
+          state.activeVersion = null;
+          fetchAndDisplay(id, null);
+        }
+        return;
+      }
+      if (!resp.ok) return;
+      mockup = await resp.json();
+    } catch (e) { return; }
+    // Skip if the user picked something else meanwhile.
+    if (mySeq !== fetchSeq || state.activeMockupId !== id || state.activeVersion !== version) return;
+    activeMockupDetail = mockup;
+    renderMetaBar(mockup, version);
+    refreshOpenVersionList(id);
   }
 
   setInterval(pollForUpdates, POLL_INTERVAL);
@@ -1320,6 +1399,7 @@
     await loadFavoritesCount();
     renderProjects();
     await loadMockups(true);
+    await pollForUpdates(true);
     updateGuideLink();
 
     var initialId = getInitialMockupId();
