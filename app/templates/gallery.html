@@ -133,6 +133,12 @@
   // append), per the task brief.
   var versionsCache = {};
 
+  // Bumped on every fetchAndDisplay call, captured at call time. Two clicks
+  // in quick succession (e.g. v2 then v3) both fetch; whichever response
+  // lands second used to always win. Now a response is only applied if its
+  // token is still the newest — the click order wins, not the network order.
+  var fetchSeq = 0;
+
   var SPLIT_SVG = '<svg viewBox="0 0 24 24"><path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6M6 21v-4"/><path d="M15 18l3 3 3-3"/></svg>';
 
   /* ── DOM refs ── */
@@ -513,8 +519,16 @@
     if (mockup.favorite) item.classList.add("has-fav");
 
     var activate = function () {
-      if (state.activeMockupId === mockup.id) deselectMockup();
-      else selectMockup(mockup.id);
+      // Re-clicking the active row while pinned to an older version goes to
+      // the latest (spec §8.1: "row click still opens the latest") rather
+      // than deselecting — deselect-on-reclick only applies when it's
+      // already showing the latest (nothing left for a click to do but close it).
+      if (state.activeMockupId === mockup.id) {
+        if (state.activeVersion != null) selectMockup(mockup.id);
+        else deselectMockup();
+      } else {
+        selectMockup(mockup.id);
+      }
     };
     item.addEventListener("click", activate);
     makeActivatable(item, activate);
@@ -963,6 +977,7 @@
   }
 
   async function fetchAndDisplay(id, version) {
+    var mySeq = ++fetchSeq;
     var url = "/api/mockups/" + encodeURIComponent(id);
     if (version != null) url += "?v=" + version;
     var mockup;
@@ -972,9 +987,13 @@
       mockup = await resp.json();
     } catch (e) { return; /* network error — leave the current view in place */ }
 
-    // The selection may have changed while this request was in flight; don't
-    // clobber the viewer with a now-stale response. Compared against the id
-    // this request was made for, before it's possibly replaced below.
+    // Two guards against a stale response: the selection may have moved to a
+    // different design entirely (activeMockupId check, as before), or — the
+    // race this fixes — a second click on the SAME design (e.g. v2 then v3)
+    // started a newer fetch that can resolve before this one. Only the
+    // newest request's response may be applied; network order no longer
+    // decides what wins, click order does.
+    if (mySeq !== fetchSeq) return;
     if (state.activeMockupId !== id) return;
 
     // RF-5: `id` may have been an alias — GET /api/mockups/{id} resolves it
@@ -1024,9 +1043,13 @@
 
     barContent.appendChild(el("span", "meta-sep"));
 
+    // The wrapper (not .meta-title) is the flex:1 item, so the pill sits
+    // right after the title text instead of being pushed to the bar's far
+    // right by a separately-growing title (task-5-review finding).
+    var titleWrap = el("span", "meta-title-wrap");
     var title = el("span", "meta-title", { title: mockup.title });
     title.appendChild(text(mockup.title));
-    barContent.appendChild(title);
+    titleWrap.appendChild(title);
 
     if (mockup.version_count >= 2) {
       // mockup.versions is newest-first; its first entry is the true latest
@@ -1039,8 +1062,10 @@
       pill.appendChild(text(isLatest
         ? ("v" + shownVersion + " · latest")
         : ("v" + shownVersion + " of " + mockup.version_count)));
-      barContent.appendChild(pill);
+      titleWrap.appendChild(pill);
     }
+
+    barContent.appendChild(titleWrap);
 
     if (mockup.content_type === "html") {
       // Viewport: one device icon labelled with the current size, choices in a menu.
