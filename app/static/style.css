@@ -493,11 +493,29 @@ body {
    version chip and time are never covered by the revealed buttons. */
 .feed-actions {
   position: absolute;
-  right: 8px;
-  top: 6px;
+  right: 6px;
+  top: 4px;
   display: flex;
   gap: 2px;
   flex-shrink: 0;
+  padding: 1px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* When the buttons are revealed they sit on a raised tray, so a long title
+   running underneath doesn't blend into the icons. The left shadow, in the
+   row's own colour (--row-bg), fades the title out before the tray edge. */
+.feed-item { --row-bg: var(--bg-surface); }
+.feed-item:hover { --row-bg: var(--bg-hover); }
+.feed-item.active { --row-bg: var(--bg-active); }
+
+.feed-item:hover .feed-actions,
+.feed-item:focus-within .feed-actions {
+  background: var(--bg-raised);
+  border-color: var(--border-dim);
+  box-shadow: -14px 0 10px -2px var(--row-bg);
 }
 
 .feed-action-btn {
@@ -529,11 +547,12 @@ body {
 @media (hover: none) {
   .feed-action-btn { opacity: 0.6; }
   /* The actions are always visible here, so the title reserves their width
-     (4 × 24px buttons + 3 × 2px gaps). They sit on the title line only, so the
+     (4 × 24px buttons + 3 × 2px gaps + the tray's 2 × 2px padding and border).
+     They sit on the title line only, so the
      meta line keeps the row's full width: a project badge beside a version
      chip no longer shrinks to one letter. */
   .sidebar-feed .feed-item .feed-title,
-  .sidebar-feed .feed-item.has-fav .feed-title { padding-right: 102px; }
+  .sidebar-feed .feed-item.has-fav .feed-title { padding-right: 106px; }
 }
 
 /* The app's cyan focus ring for keyboard users: on the non-semantic,
@@ -661,6 +680,12 @@ body {
   margin: 2px 0 4px 16px;
   padding-left: 8px;
   border-left: 1px solid var(--border-subtle);
+}
+
+/* The chip toggles .open; a closed list stays in the DOM (keeping its
+   rendered rows for the next open) but must not show. */
+.ver-list:not(.open) {
+  display: none;
 }
 
 .ver-list-loading {
