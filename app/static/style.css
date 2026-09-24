@@ -489,11 +489,12 @@ body {
   85%, 100% { transform: translateX(var(--scroll-dist, -50px)); }
 }
 
+/* On the title line only (not centred over the row), so the meta line's
+   version chip and time are never covered by the revealed buttons. */
 .feed-actions {
   position: absolute;
   right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 6px;
   display: flex;
   gap: 2px;
   flex-shrink: 0;
@@ -527,11 +528,10 @@ body {
 
 @media (hover: none) {
   .feed-action-btn { opacity: 0.6; }
-  /* The actions are always visible here. They sit on the title line only, and
-     the title reserves their width (4 × 24px buttons + 3 × 2px gaps), so the
+  /* The actions are always visible here, so the title reserves their width
+     (4 × 24px buttons + 3 × 2px gaps). They sit on the title line only, so the
      meta line keeps the row's full width: a project badge beside a version
      chip no longer shrinks to one letter. */
-  .feed-actions { top: 6px; transform: none; }
   .sidebar-feed .feed-item .feed-title,
   .sidebar-feed .feed-item.has-fav .feed-title { padding-right: 102px; }
 }
