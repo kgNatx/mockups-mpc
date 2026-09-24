@@ -1,4 +1,7 @@
+import asyncio
 import json
+import weakref
+from contextlib import asynccontextmanager
 import aiosqlite
 from datetime import datetime, timezone
 from app.config import get_db_path
@@ -15,11 +18,52 @@ CREATE TABLE IF NOT EXISTS mockups (
     tags TEXT DEFAULT '[]',
     favorite INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    latest_at TEXT NOT NULL DEFAULT '',
+    version_count INTEGER NOT NULL DEFAULT 1,
+    last_version_number INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_mockups_project_slug ON mockups(project_slug);
 CREATE INDEX IF NOT EXISTS idx_mockups_created_at ON mockups(created_at);
 """
+
+CREATE_VERSION_TABLES = """
+CREATE TABLE IF NOT EXISTS mockup_versions (
+    mockup_id TEXT NOT NULL REFERENCES mockups(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    content_type TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (mockup_id, number)
+);
+CREATE TABLE IF NOT EXISTS mockup_aliases (
+    alias_id TEXT PRIMARY KEY,
+    mockup_id TEXT NOT NULL REFERENCES mockups(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mockup_aliases_target ON mockup_aliases(mockup_id, number);
+"""
+
+# The app shares one connection across coroutines, so BEGIN IMMEDIATE alone does
+# not isolate them: another coroutine's statements would join the open
+# transaction. Every write therefore holds this per-connection lock.
+_locks: "weakref.WeakKeyDictionary[aiosqlite.Connection, asyncio.Lock]" = weakref.WeakKeyDictionary()
+
+
+@asynccontextmanager
+async def transaction(db: aiosqlite.Connection):
+    """Serialise a write: lock, BEGIN IMMEDIATE, COMMIT (ROLLBACK on exception)."""
+    lock = _locks.setdefault(db, asyncio.Lock())
+    async with lock:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            yield db
+        except BaseException:
+            await db.rollback()
+            raise
+        await db.commit()
 
 
 async def _migrate_favorite_column(db: aiosqlite.Connection) -> None:
@@ -32,9 +76,42 @@ async def _migrate_favorite_column(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
+async def _migrate_versions(db: aiosqlite.Connection) -> None:
+    """Give every pre-1.5 mockup a v1 row and the design columns. Idempotent."""
+    await db.executescript(CREATE_VERSION_TABLES)
+    cursor = await db.execute("PRAGMA table_info(mockups)")
+    cols = {row["name"] for row in await cursor.fetchall()}
+    async with transaction(db):
+        # SQLite needs a DEFAULT to add a NOT NULL column; the backfill below
+        # replaces the '' placeholder.
+        if "latest_at" not in cols:
+            await db.execute("ALTER TABLE mockups ADD COLUMN latest_at TEXT NOT NULL DEFAULT ''")
+        if "version_count" not in cols:
+            await db.execute("ALTER TABLE mockups ADD COLUMN version_count INTEGER NOT NULL DEFAULT 1")
+        if "last_version_number" not in cols:
+            await db.execute(
+                "ALTER TABLE mockups ADD COLUMN last_version_number INTEGER NOT NULL DEFAULT 1")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_mockups_latest_at ON mockups(latest_at)")
+        # Titles are copied, not rewritten: base-title normalisation is fold-only.
+        await db.execute(
+            """INSERT INTO mockup_versions (mockup_id, number, title, description,
+               content_type, file_path, created_at)
+               SELECT id, 1, title, description, content_type, file_path, created_at
+               FROM mockups m
+               WHERE NOT EXISTS (SELECT 1 FROM mockup_versions v WHERE v.mockup_id = m.id)""")
+        await db.execute("UPDATE mockups SET latest_at = created_at WHERE latest_at = ''")
+        await db.execute(
+            """UPDATE mockups SET last_version_number = (
+                   SELECT MAX(number) FROM mockup_versions v WHERE v.mockup_id = mockups.id)
+               WHERE last_version_number < (
+                   SELECT MAX(number) FROM mockup_versions v WHERE v.mockup_id = mockups.id)""")
+
+
 async def init_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(str(get_db_path()))
     db.row_factory = aiosqlite.Row
+    # Off by default in SQLite; ON DELETE CASCADE on versions/aliases needs it.
+    await db.execute("PRAGMA foreign_keys=ON")
     await db.execute("PRAGMA journal_mode=WAL")
     # Wait up to 5s for a lock rather than failing immediately, so the single-
     # connection assumption stays robust if a second connection ever appears.
@@ -42,21 +119,163 @@ async def init_db() -> aiosqlite.Connection:
     await db.executescript(CREATE_TABLE)
     await db.commit()
     await _migrate_favorite_column(db)
+    await _migrate_versions(db)
     return db
+
+
+def _ts(value: datetime | str) -> str:
+    return value.isoformat() if isinstance(value, datetime) else value
 
 
 async def insert_mockup(db: aiosqlite.Connection, *, id: str, project: str,
                          project_slug: str, title: str, description: str | None,
                          content_type: str, file_path: str, tags: list[str],
                          created_at: datetime, updated_at: datetime) -> None:
+    """Insert a design and its v1 in one transaction."""
+    async with transaction(db):
+        await insert_design_row(
+            db, id=id, project=project, project_slug=project_slug, title=title,
+            description=description, content_type=content_type, file_path=file_path,
+            tags=tags, created_at=created_at, updated_at=updated_at,
+            latest_at=created_at, version_count=1)
+        await insert_version(
+            db, mockup_id=id, number=1, title=title, description=description,
+            content_type=content_type, file_path=file_path, created_at=created_at)
+
+
+# --- Helpers below do not commit: call them inside `async with transaction(db)`. ---
+
+async def insert_design_row(db: aiosqlite.Connection, *, id: str, project: str,
+                            project_slug: str, title: str, description: str | None,
+                            content_type: str, file_path: str, tags: list[str],
+                            created_at: datetime | str, updated_at: datetime | str,
+                            latest_at: datetime | str, version_count: int) -> None:
     await db.execute(
         """INSERT INTO mockups (id, project, project_slug, title, description,
-           content_type, file_path, tags, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (id, project, project_slug, title, description, content_type,
-         file_path, json.dumps(tags), created_at.isoformat(), updated_at.isoformat())
+           content_type, file_path, tags, created_at, updated_at, latest_at, version_count)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (id, project, project_slug, title, description, content_type, file_path,
+         json.dumps(tags), _ts(created_at), _ts(updated_at), _ts(latest_at), version_count)
     )
-    await db.commit()
+
+
+async def insert_version(db: aiosqlite.Connection, *, mockup_id: str, number: int,
+                         title: str, description: str | None, content_type: str,
+                         file_path: str, created_at: datetime | str) -> None:
+    await db.execute(
+        """INSERT INTO mockup_versions (mockup_id, number, title, description,
+           content_type, file_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (mockup_id, number, title, description, content_type, file_path, _ts(created_at))
+    )
+    # High-water mark: numbers are never reused, even after the top one is
+    # deleted or split away.
+    await db.execute(
+        "UPDATE mockups SET last_version_number = MAX(last_version_number, ?) WHERE id = ?",
+        (number, mockup_id)
+    )
+
+
+async def next_version_number(db: aiosqlite.Connection, mockup_id: str) -> int:
+    cursor = await db.execute(
+        """SELECT MAX(m.last_version_number,
+                      COALESCE((SELECT MAX(number) FROM mockup_versions v
+                                WHERE v.mockup_id = m.id), 0)) + 1 AS n
+           FROM mockups m WHERE m.id = ?""",
+        (mockup_id,)
+    )
+    row = await cursor.fetchone()
+    return int(row["n"]) if row else 1
+
+
+async def update_design_title(db: aiosqlite.Connection, mockup_id: str, title: str) -> None:
+    await db.execute("UPDATE mockups SET title = ? WHERE id = ?", (title, mockup_id))
+
+
+async def refresh_design_mirror(db: aiosqlite.Connection, mockup_id: str) -> None:
+    """Copy the highest-numbered version onto the design row; recount versions."""
+    latest = """(SELECT {col} FROM mockup_versions v WHERE v.mockup_id = mockups.id
+                 ORDER BY number DESC LIMIT 1)"""
+    await db.execute(
+        f"""UPDATE mockups SET
+               description = {latest.format(col="description")},
+               content_type = {latest.format(col="content_type")},
+               file_path = {latest.format(col="file_path")},
+               latest_at = {latest.format(col="created_at")},
+               version_count = (SELECT COUNT(*) FROM mockup_versions v
+                                WHERE v.mockup_id = mockups.id),
+               updated_at = ?
+           WHERE id = ?""",
+        (datetime.now(timezone.utc).isoformat(), mockup_id)
+    )
+
+
+async def delete_version_row(db: aiosqlite.Connection, mockup_id: str, number: int) -> None:
+    """Delete one version and any alias pinned to it (it would point at nothing)."""
+    await db.execute("DELETE FROM mockup_aliases WHERE mockup_id = ? AND number = ?",
+                     (mockup_id, number))
+    await db.execute("DELETE FROM mockup_versions WHERE mockup_id = ? AND number = ?",
+                     (mockup_id, number))
+
+
+async def move_version(db: aiosqlite.Connection, mockup_id: str, number: int, *,
+                       to_mockup_id: str, to_number: int) -> None:
+    """Re-parent a version row, and re-point aliases pinned to it."""
+    await db.execute(
+        "UPDATE mockup_versions SET mockup_id = ?, number = ? WHERE mockup_id = ? AND number = ?",
+        (to_mockup_id, to_number, mockup_id, number))
+    await db.execute(
+        "UPDATE mockup_aliases SET mockup_id = ?, number = ? WHERE mockup_id = ? AND number = ?",
+        (to_mockup_id, to_number, mockup_id, number))
+    await db.execute(
+        "UPDATE mockups SET last_version_number = MAX(last_version_number, ?) WHERE id = ?",
+        (to_number, to_mockup_id))
+
+
+async def insert_alias(db: aiosqlite.Connection, *, alias_id: str, mockup_id: str,
+                       number: int) -> None:
+    await db.execute(
+        "INSERT INTO mockup_aliases (alias_id, mockup_id, number) VALUES (?, ?, ?)",
+        (alias_id, mockup_id, number))
+
+
+async def delete_alias(db: aiosqlite.Connection, alias_id: str) -> None:
+    await db.execute("DELETE FROM mockup_aliases WHERE alias_id = ?", (alias_id,))
+
+
+# --- Reads ---
+
+async def get_versions(db: aiosqlite.Connection, mockup_id: str) -> list[dict]:
+    """All versions of a design, newest (highest number) first."""
+    cursor = await db.execute(
+        "SELECT * FROM mockup_versions WHERE mockup_id = ? ORDER BY number DESC", (mockup_id,))
+    return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_version(db: aiosqlite.Connection, mockup_id: str, number: int) -> dict | None:
+    cursor = await db.execute(
+        "SELECT * FROM mockup_versions WHERE mockup_id = ? AND number = ?", (mockup_id, number))
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def get_alias(db: aiosqlite.Connection, alias_id: str) -> dict | None:
+    cursor = await db.execute("SELECT * FROM mockup_aliases WHERE alias_id = ?", (alias_id,))
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def list_aliases_for_version(db: aiosqlite.Connection, mockup_id: str,
+                                   number: int) -> list[str]:
+    cursor = await db.execute(
+        "SELECT alias_id FROM mockup_aliases WHERE mockup_id = ? AND number = ? ORDER BY alias_id",
+        (mockup_id, number))
+    return [row["alias_id"] for row in await cursor.fetchall()]
+
+
+async def list_design_titles(db: aiosqlite.Connection, project_slug: str) -> list[dict]:
+    cursor = await db.execute(
+        "SELECT id, title FROM mockups WHERE project_slug = ?", (project_slug,))
+    return [dict(row) for row in await cursor.fetchall()]
 
 
 async def get_mockup(db: aiosqlite.Connection, mockup_id: str) -> dict | None:
@@ -68,9 +287,9 @@ async def get_mockup(db: aiosqlite.Connection, mockup_id: str) -> dict | None:
 
 
 _SORT_ORDERS = {
-    "newest": "created_at DESC",
+    "newest": "latest_at DESC",
     "oldest": "created_at ASC",
-    "favorites": "favorite DESC, created_at DESC",
+    "favorites": "favorite DESC, latest_at DESC",
 }
 
 
@@ -87,8 +306,11 @@ async def list_mockups(db: aiosqlite.Connection, *, project_slug: str | None = N
         conditions.append("favorite = 1")
     if q:
         like = f"%{q}%"
-        conditions.append("(title LIKE ? OR description LIKE ? OR tags LIKE ?)")
-        params.extend([like, like, like])
+        # Version titles too: a folded design is findable by any draft's title.
+        conditions.append(
+            "(title LIKE ? OR description LIKE ? OR tags LIKE ? OR EXISTS ("
+            "SELECT 1 FROM mockup_versions v WHERE v.mockup_id = mockups.id AND v.title LIKE ?))")
+        params.extend([like, like, like, like])
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     order = _SORT_ORDERS.get(sort, _SORT_ORDERS["newest"])
@@ -103,7 +325,7 @@ async def list_mockups(db: aiosqlite.Connection, *, project_slug: str | None = N
 async def list_projects(db: aiosqlite.Connection) -> list[dict]:
     cursor = await db.execute(
         """SELECT project, project_slug, COUNT(*) as count
-           FROM mockups GROUP BY project_slug ORDER BY count DESC, project"""
+           FROM mockups GROUP BY project_slug ORDER BY MAX(latest_at) DESC, project"""
     )
     return [dict(row) for row in await cursor.fetchall()]
 
@@ -144,19 +366,19 @@ async def update_mockup(db: aiosqlite.Connection, mockup_id: str, *,
     sets.append("updated_at = ?")
     params.append(datetime.now(timezone.utc).isoformat())
     params.append(mockup_id)
-    cursor = await db.execute(
-        f"UPDATE mockups SET {', '.join(sets)} WHERE id = ?", params
-    )
-    await db.commit()
+    async with transaction(db):
+        cursor = await db.execute(
+            f"UPDATE mockups SET {', '.join(sets)} WHERE id = ?", params
+        )
     return cursor.rowcount > 0
 
 
 async def set_favorite(db: aiosqlite.Connection, mockup_id: str, value: bool) -> bool:
-    cursor = await db.execute(
-        "UPDATE mockups SET favorite = ?, updated_at = ? WHERE id = ?",
-        (1 if value else 0, datetime.now(timezone.utc).isoformat(), mockup_id)
-    )
-    await db.commit()
+    async with transaction(db):
+        cursor = await db.execute(
+            "UPDATE mockups SET favorite = ?, updated_at = ? WHERE id = ?",
+            (1 if value else 0, datetime.now(timezone.utc).isoformat(), mockup_id)
+        )
     return cursor.rowcount > 0
 
 
@@ -167,8 +389,9 @@ async def count_favorites(db: aiosqlite.Connection) -> int:
 
 
 async def delete_mockup(db: aiosqlite.Connection, mockup_id: str) -> bool:
-    cursor = await db.execute("DELETE FROM mockups WHERE id = ?", (mockup_id,))
-    await db.commit()
+    # ON DELETE CASCADE removes the design's versions and aliases.
+    async with transaction(db):
+        cursor = await db.execute("DELETE FROM mockups WHERE id = ?", (mockup_id,))
     return cursor.rowcount > 0
 
 

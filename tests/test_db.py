@@ -246,3 +246,70 @@ async def test_mockup_record_has_favorite(db):
     row = await get_mockup(db, "r1")
     record = MockupRecord(**row)
     assert record.favorite is True
+
+
+# The v1.4.x mockups DDL, verbatim, before versions existed.
+V14_DDL = """
+CREATE TABLE mockups (
+    id TEXT PRIMARY KEY,
+    project TEXT NOT NULL,
+    project_slug TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    content_type TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    tags TEXT DEFAULT '[]',
+    favorite INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_mockups_project_slug ON mockups(project_slug);
+CREATE INDEX idx_mockups_created_at ON mockups(created_at);
+CREATE INDEX idx_mockups_favorite ON mockups(favorite);
+"""
+
+
+@pytest.mark.asyncio
+async def test_migration_from_v14_is_idempotent(tmp_data_dir):
+    legacy = await aiosqlite.connect(str(config.DB_PATH))
+    await legacy.executescript(V14_DDL)
+    seeded = [
+        ("a", "Privacy page — draft 3b (rail fixed)", "2026-01-02T00:00:00+00:00", "html", b"<p>a</p>"),
+        ("b", "Privacy page — draft 8", "2026-01-03T00:00:00+00:00", "html", b"<p>b</p>"),
+        ("c", "Chart", "2026-01-01T00:00:00+00:00", "png", b"\x89PNG-bytes"),
+    ]
+    (tmp_data_dir / "p").mkdir()
+    for id_, title, ts, ct, data in seeded:
+        (tmp_data_dir / "p" / f"{id_}.{ct}").write_bytes(data)
+        await legacy.execute(
+            "INSERT INTO mockups (id, project, project_slug, title, description, content_type, "
+            "file_path, created_at, updated_at) VALUES (?, 'P', 'p', ?, 'd', ?, ?, ?, ?)",
+            (id_, title, ct, f"p/{id_}.{ct}", ts, ts))
+    await legacy.commit()
+    await legacy.close()
+
+    for _ in range(2):
+        db = await init_db()
+        await db.close()
+    db = await init_db()
+    try:
+        rows = await list_mockups(db, sort="newest")
+        assert [r["id"] for r in rows] == ["b", "a", "c"]  # pre-migration created_at DESC
+        by_id = {r["id"]: r for r in rows}
+        for id_, title, ts, ct, data in seeded:
+            r = by_id[id_]
+            assert r["title"] == title
+            assert r["latest_at"] == ts
+            assert r["version_count"] == 1
+            assert (tmp_data_dir / "p" / f"{id_}.{ct}").read_bytes() == data
+
+        cursor = await db.execute("SELECT * FROM mockup_versions ORDER BY mockup_id")
+        versions = [dict(v) for v in await cursor.fetchall()]
+        assert len(versions) == 3
+        for v, (id_, title, ts, ct, _) in zip(versions, sorted(seeded)):
+            assert (v["mockup_id"], v["number"], v["title"], v["file_path"], v["created_at"], v["content_type"]) == \
+                (id_, 1, title, f"p/{id_}.{ct}", ts, ct)
+        cursor = await db.execute("SELECT COUNT(*) AS n FROM mockup_aliases")
+        assert (await cursor.fetchone())["n"] == 0
+    finally:
+        await db.close()

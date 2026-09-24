@@ -22,27 +22,29 @@ def slugify_project(name: str) -> str:
     return slug
 
 
-def write_mockup_file(project_slug: str, mockup_id: str, content_type: str, content: str) -> str:
+def version_rel_path(project_slug: str, mockup_id: str, number: int, content_type: str) -> str:
+    return f"{project_slug}/{mockup_id}/v{number}.{content_type}"
+
+
+def write_mockup_file(project_slug: str, mockup_id: str, content_type: str, content: str,
+                      *, rel_path: str | None = None) -> str:
+    """Write content to rel_path, or to the v1 layout `{slug}/{id}.{ext}` when omitted."""
     if content_type not in VALID_TYPES:
         raise ValueError(f"Invalid content_type: {content_type!r}")
 
     data_dir = get_data_dir()
-    project_dir = data_dir / project_slug
-    project_dir.mkdir(parents=True, exist_ok=True)
-
-    rel_path = f"{project_slug}/{mockup_id}.{content_type}"
+    if rel_path is None:
+        rel_path = f"{project_slug}/{mockup_id}.{content_type}"
     full_path = data_dir / rel_path
 
     if content_type in TEXT_TYPES:
         data = content.encode("utf-8")
-        if len(data) > MAX_CONTENT_SIZE:
-            raise ValueError(f"Content too large: {len(data)} bytes (max {MAX_CONTENT_SIZE})")
-        full_path.write_bytes(data)
     else:
         data = base64.b64decode(content)
-        if len(data) > MAX_CONTENT_SIZE:
-            raise ValueError(f"Content too large: {len(data)} bytes (max {MAX_CONTENT_SIZE})")
-        full_path.write_bytes(data)
+    if len(data) > MAX_CONTENT_SIZE:
+        raise ValueError(f"Content too large: {len(data)} bytes (max {MAX_CONTENT_SIZE})")
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(data)
 
     return rel_path
 
@@ -51,3 +53,7 @@ def delete_mockup_file(rel_path: str) -> None:
     full_path = get_data_dir() / rel_path
     if full_path.exists():
         full_path.unlink()
+    # A `{slug}/{id}/` version directory goes once its last file does.
+    if len(Path(rel_path).parts) == 3 and full_path.parent.is_dir() \
+            and not any(full_path.parent.iterdir()):
+        full_path.parent.rmdir()
