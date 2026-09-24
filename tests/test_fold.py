@@ -140,6 +140,103 @@ async def test_apply_fold_source_version_need_not_be_number_one(db, tmp_data_dir
     assert (tmp_data_dir / moved["file_path"]).read_bytes() == b"<p>2-v2</p>"
 
 
+async def test_apply_fold_failure_rolls_back_whole_group(db, tmp_data_dir, monkeypatch):
+    # A failure partway through a 3-member group (after the first member's
+    # move_version + insert_alias + delete_design_row already ran, and after
+    # the second member's move_version ran too) must undo everything: fold is
+    # one transaction per group, not one per member.
+    a = await _design(db, "Screen 1", content="<p>1</p>", tags=["ui"])
+    b = await _design(db, "Screen 2", content="<p>2</p>", tags=["nav"])
+    c = await _design(db, "Screen 3", content="<p>3</p>", tags=["extra"])
+    await _backdate(db, a, "2026-01-01T00:00:00+00:00")
+    await _backdate(db, b, "2026-01-02T00:00:00+00:00")
+    await _backdate(db, c, "2026-01-03T00:00:00+00:00")
+
+    bytes_by_id = {}
+    for mid in (a, b, c):
+        v1 = (await get_versions(db, mid))[0]
+        bytes_by_id[mid] = (tmp_data_dir / v1["file_path"]).read_bytes()
+
+    real_insert_alias = dbm.insert_alias
+    calls = {"n": 0}
+
+    async def _flaky_insert_alias(conn, *, alias_id, mockup_id, number):
+        calls["n"] += 1
+        if calls["n"] == 2:  # b's alias already inserted; fail on c's, after c's move_version ran
+            raise RuntimeError("simulated failure mid-group")
+        await real_insert_alias(conn, alias_id=alias_id, mockup_id=mockup_id, number=number)
+
+    monkeypatch.setattr(dbm, "insert_alias", _flaky_insert_alias)
+
+    [group] = await plan_folds(db)
+    with pytest.raises(RuntimeError, match="simulated failure mid-group"):
+        await apply_fold(db, group)
+
+    for mid, title in ((a, "Screen 1"), (b, "Screen 2"), (c, "Screen 3")):
+        design = await get_mockup(db, mid)
+        assert design is not None, f"{mid} should not have been deleted"
+        assert design["title"] == title  # survivor's own title untouched
+        assert design["version_count"] == 1
+        versions = await get_versions(db, mid)
+        assert [v["number"] for v in versions] == [1]
+        assert (tmp_data_dir / versions[0]["file_path"]).read_bytes() == bytes_by_id[mid]
+
+    assert await get_alias(db, b) is None
+    assert await get_alias(db, c) is None
+    survivor = await get_mockup(db, a)
+    assert survivor["tags"] == ["ui"]
+    assert survivor["favorite"] == 0
+
+
+async def test_apply_fold_moves_a_pre_existing_alias_with_its_member(db, tmp_data_dir):
+    # x is restored-by-split shaped: version_count == 1, but its one surviving
+    # version already has an alias pinned to it (e.g. from an earlier fold).
+    # Folding x into another design must carry that alias along, not strand
+    # or drop it.
+    y = await _design(db, "Screen 1", content="<p>y1</p>")
+    x = await _design(db, "Screen 2", content="<p>x1</p>")
+    await versioning.add_version(db, x, title="Screen 2", description=None,
+                                 content_type="html", content="<p>x2</p>")
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-x", mockup_id=x, number=2)
+    await versioning.delete_version(db, x, 1)  # x now has only v2, version_count == 1
+    await _backdate(db, y, "2026-01-01T00:00:00+00:00")
+    await versioning.set_version_created_at(db, x, 2, "2026-01-02T00:00:00+00:00")
+
+    [group] = await plan_folds(db)
+    await apply_fold(db, group)
+
+    assert await versioning.resolve(db, "old-x") == (y, 2)
+
+
+@pytest.mark.asyncio
+async def test_apply_fold_moves_a_pre_existing_alias_view_via_http(client):
+    resp_y = await client.post(
+        "/api/upload",
+        files={"file": ("y.html", b"<p>y1</p>", "text/html")},
+        data={"project": "Proj", "title": "Screen 1", "fold": "false"},
+    )
+    y = resp_y.json()["id"]
+
+    db = await init_db()
+    x = await _design(db, "Screen 2", content="<p>x1</p>")
+    await versioning.add_version(db, x, title="Screen 2", description=None,
+                                 content_type="html", content="<p>x2</p>")
+    async with dbm.transaction(db):
+        await dbm.insert_alias(db, alias_id="old-x", mockup_id=x, number=2)
+    await versioning.delete_version(db, x, 1)
+    await _backdate(db, y, "2026-01-01T00:00:00+00:00")
+    await versioning.set_version_created_at(db, x, 2, "2026-01-02T00:00:00+00:00")
+
+    [group] = await plan_folds(db)
+    await apply_fold(db, group)
+    await db.close()
+
+    resp = await client.get("/view/old-x")
+    assert resp.status_code == 200
+    assert resp.text == "<p>x2</p>"
+
+
 # --- fold via HTTP: old ids read the byte-identical file afterward ---
 
 @pytest.mark.asyncio

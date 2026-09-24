@@ -98,6 +98,7 @@ It groups designs that share a project and a base title, oldest first, and folds
 | `split_version` | Split one version out of its design into its own standalone mockup — reverses a fold. |
 | `delete_mockup` | Delete a mockup, or (with `version`) just one version — removes the DB record(s) and file(s) on disk. |
 | `tag_mockup` | Add or remove tags on an existing mockup. |
+| `set_created_at` | Change the created date of a mockup (or one version). Useful for backdating uploads or reordering the timeline. |
 
 The server stores all content permanently. AI clients can clean up local files when they're no longer needed, or retrieve content later via `get_mockup`.
 
@@ -106,11 +107,14 @@ The server stores all content permanently. AI clients can clean up local files w
 | Route | Purpose |
 |-------|---------|
 | `GET /` | Gallery UI |
-| `GET /view/{id}` | Raw mockup (HTML rendered, images served with correct MIME type) |
+| `GET /view/{id}` | Raw mockup, latest version (HTML rendered, images served with correct MIME type) |
+| `GET /view/{id}/v/{n}` | Raw mockup, one specific version |
 | `GET /api/mockups` | JSON listing with `limit`, `offset`, `project` filter |
-| `GET /api/mockups/{id}` | Single mockup metadata |
+| `GET /api/mockups/{id}` | Single mockup metadata, including its `versions` list; `?v={n}` points `view_url` at that version |
+| `POST /api/mockups/{id}/versions/{n}/split` | Split that version out into its own standalone mockup |
+| `DELETE /api/mockups/{id}/versions/{n}` | Delete one version (refused on the last remaining one) |
 | `GET /api/projects` | Project list with counts |
-| `POST /api/upload` | Upload a mockup file (multipart form: `file`, `project`, `title`, `description?`, `tags?`) |
+| `POST /api/upload` | Upload a mockup file (multipart form: `file`, `project`, `title`, `description?`, `tags?`, `parent?`, `fold?`) — see Versions |
 | `GET /health` | Health check |
 
 ## Setup
