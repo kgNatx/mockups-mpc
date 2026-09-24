@@ -2,7 +2,7 @@ import pytest
 import aiosqlite
 from datetime import datetime, timezone
 from app import config
-from app.db import init_db, insert_mockup, get_mockup, list_mockups, list_projects, update_mockup, delete_mockup, set_favorite, count_favorites
+from app.db import init_db, insert_mockup, get_mockup, list_mockups, list_projects, update_mockup, set_favorite, count_favorites
 from app.models import MockupRecord
 
 @pytest.fixture
@@ -76,22 +76,6 @@ async def test_update_mockup(db):
     row = await get_mockup(db, "u1")
     assert row["title"] == "New Title"
     assert row["description"] == "Updated"
-
-@pytest.mark.asyncio
-async def test_delete_mockup(db):
-    now = datetime.now(timezone.utc)
-    await insert_mockup(db, id="d1", project="P", project_slug="p",
-                        title="Gone", description=None, content_type="html",
-                        file_path="p/d1.html", tags=[], created_at=now, updated_at=now)
-    deleted = await delete_mockup(db, "d1")
-    assert deleted is True
-    assert await get_mockup(db, "d1") is None
-
-@pytest.mark.asyncio
-async def test_delete_nonexistent(db):
-    deleted = await delete_mockup(db, "nope")
-    assert deleted is False
-
 
 @pytest.mark.asyncio
 async def test_set_favorite(db):

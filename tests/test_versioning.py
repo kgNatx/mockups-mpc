@@ -374,3 +374,65 @@ async def test_delete_v1_moves_design_created_at_to_new_first_version(db):
 
     await versioning.delete_version(db, mid, 1)
     assert (await get_mockup(db, mid))["created_at"] == v2["created_at"]
+
+
+# --- write-path hardening (s007 deferred minors) ---
+
+async def test_transaction_commit_failure_rolls_back(db, monkeypatch):
+    real_commit = db.commit
+
+    async def boom():
+        raise RuntimeError("commit failed")
+    monkeypatch.setattr(db, "commit", boom)
+    with pytest.raises(RuntimeError):
+        async with dbm.transaction(db):
+            await db.execute("UPDATE mockups SET title = 'x'")
+    assert not db.in_transaction  # rolled back, not left open
+    monkeypatch.setattr(db, "commit", real_commit)
+    async with dbm.transaction(db):  # the lock was released
+        pass
+
+
+async def test_add_version_commit_failure_leaves_no_file(db, tmp_data_dir, monkeypatch):
+    mid = await _design(db)
+
+    async def boom():
+        raise RuntimeError("commit failed")
+    monkeypatch.setattr(db, "commit", boom)
+    with pytest.raises(RuntimeError):
+        await _add(db, mid, "Privacy page — draft 2")
+    assert not (tmp_data_dir / "proj" / mid / "v2.html").exists()
+
+
+async def test_add_version_unknown_design_is_not_found(db):
+    with pytest.raises(versioning.NotFound):
+        await _add(db, "nope", "x")
+
+
+async def test_next_version_number_unknown_design_raises(db):
+    with pytest.raises(ValueError, match="Mockup not found"):
+        async with dbm.transaction(db):
+            await dbm.next_version_number(db, "nope")
+
+
+async def test_only_version_refusals_are_conflicts(db):
+    mid = await _design(db)
+    with pytest.raises(versioning.Conflict):
+        await versioning.split_version(db, mid, 1)
+    with pytest.raises(versioning.Conflict):
+        await versioning.delete_version(db, mid, 1)
+
+
+async def test_delete_design_racing_add_version_leaves_no_files(db, tmp_data_dir):
+    import asyncio
+    mid = await _design(db)
+    await _add(db, mid, "Privacy page — draft 2")
+    results = await asyncio.gather(
+        versioning.delete_design(db, mid),
+        _add(db, mid, "Privacy page — draft 3"),
+        return_exceptions=True)
+    assert await get_mockup(db, mid) is None
+    assert not (tmp_data_dir / "proj" / mid).exists()
+    assert not (tmp_data_dir / "proj" / f"{mid}.html").exists()
+    assert results[0] is None
+    assert results[1] is None or isinstance(results[1], versioning.NotFound)

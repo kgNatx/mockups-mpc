@@ -60,7 +60,15 @@ class VersionRef:
     folded: bool
 
 
-class UnknownParent(ValueError):
+class NotFound(ValueError):
+    """An unknown design, alias or version. Routes answer 404."""
+
+
+class Conflict(ValueError):
+    """A refused write, such as removing a design's only version. Routes answer 409."""
+
+
+class UnknownParent(NotFound):
     """Raised when `parent` (an upload's target design) doesn't resolve."""
 
 
@@ -87,25 +95,26 @@ async def add_version(db: aiosqlite.Connection, mockup_id: str, *, title: str,
                       description: str | None, content_type: str, content: str,
                       folded: bool = False) -> VersionRef:
     """Append a version. The file is written first and removed if the db write fails."""
-    async with queries.transaction(db):
-        # Read inside the transaction: the lock makes number + count race-free.
-        design = await queries.get_mockup(db, mockup_id)
-        if design is None:
-            raise ValueError(f"Mockup not found: {mockup_id}")
-        number = await queries.next_version_number(db, mockup_id)
-        while True:
-            # Exclusive create: a path can already be taken by a version that
-            # moved here with a reused alias id (split). Skip to the next number.
-            try:
-                file_path = write_mockup_file(
-                    design["project_slug"], mockup_id, content_type, content,
-                    rel_path=version_rel_path(design["project_slug"], mockup_id, number,
-                                              content_type),
-                    exclusive=True)
-                break
-            except FileExistsError:
-                number += 1
-        try:
+    file_path = None
+    try:
+        async with queries.transaction(db):
+            # Read inside the transaction: the lock makes number + count race-free.
+            design = await queries.get_mockup(db, mockup_id)
+            if design is None:
+                raise NotFound(f"Mockup not found: {mockup_id}")
+            number = await queries.next_version_number(db, mockup_id)
+            while True:
+                # Exclusive create: a path can already be taken by a version that
+                # moved here with a reused alias id (split). Skip to the next number.
+                try:
+                    file_path = write_mockup_file(
+                        design["project_slug"], mockup_id, content_type, content,
+                        rel_path=version_rel_path(design["project_slug"], mockup_id, number,
+                                                  content_type),
+                        exclusive=True)
+                    break
+                except FileExistsError:
+                    number += 1
             existing = await queries.get_versions(db, mockup_id)
             await queries.insert_version(
                 db, mockup_id=mockup_id, number=number, title=title, description=description,
@@ -116,9 +125,11 @@ async def add_version(db: aiosqlite.Connection, mockup_id: str, *, title: str,
                 # design that ever had more versions keeps its (maybe manual) title.
                 await queries.update_design_title(db, mockup_id, base_title(existing[-1]["title"]))
             await queries.refresh_design_mirror(db, mockup_id)
-        except BaseException:
+    except BaseException:
+        # Outside the transaction block, so a failed COMMIT also removes the file.
+        if file_path is not None:
             delete_mockup_file(file_path)
-            raise
+        raise
     return VersionRef(mockup_id=mockup_id, number=number, folded=folded)
 
 
@@ -140,12 +151,12 @@ async def split_version(db: aiosqlite.Connection, mockup_id: str, number: int) -
     async with queries.transaction(db):
         design = await queries.get_mockup(db, mockup_id)
         if design is None:
-            raise ValueError(f"Mockup not found: {mockup_id}")
+            raise NotFound(f"Mockup not found: {mockup_id}")
         version = await queries.get_version(db, mockup_id, number)
         if version is None:
-            raise ValueError(f"Version not found: {mockup_id} v{number}")
+            raise NotFound(f"Version not found: {mockup_id} v{number}")
         if design["version_count"] <= 1:
-            raise ValueError("Cannot split the only version")
+            raise Conflict("Cannot split the only version")
         aliases = await queries.list_aliases_for_version(db, mockup_id, number)
         new_id = aliases[0] if aliases else str(uuid.uuid4())
         if aliases:
@@ -168,12 +179,12 @@ async def delete_version(db: aiosqlite.Connection, mockup_id: str, number: int) 
     async with queries.transaction(db):
         design = await queries.get_mockup(db, mockup_id)
         if design is None:
-            raise ValueError(f"Mockup not found: {mockup_id}")
+            raise NotFound(f"Mockup not found: {mockup_id}")
         version = await queries.get_version(db, mockup_id, number)
         if version is None:
-            raise ValueError(f"Version not found: {mockup_id} v{number}")
+            raise NotFound(f"Version not found: {mockup_id} v{number}")
         if design["version_count"] <= 1:
-            raise ValueError(
+            raise Conflict(
                 "Cannot delete the only version; use delete_mockup without version "
                 "to delete the mockup.")
         await queries.delete_version_row(db, mockup_id, number)
@@ -183,12 +194,18 @@ async def delete_version(db: aiosqlite.Connection, mockup_id: str, number: int) 
 
 
 async def delete_design(db: aiosqlite.Connection, mockup_id: str) -> None:
-    """Delete every version's file, then the design (cascade removes versions + aliases)."""
-    if await queries.get_mockup(db, mockup_id) is None:
-        raise ValueError(f"Mockup not found: {mockup_id}")
-    for version in await queries.get_versions(db, mockup_id):
+    """Delete the design (cascade removes versions + aliases), then every version's file.
+
+    One transaction, so a concurrent add_version either lands before (and its file
+    is deleted here) or finds no design; files go after commit, like delete_version.
+    """
+    async with queries.transaction(db):
+        if await queries.get_mockup(db, mockup_id) is None:
+            raise NotFound(f"Mockup not found: {mockup_id}")
+        versions = await queries.get_versions(db, mockup_id)
+        await queries.delete_design_row(db, mockup_id)
+    for version in versions:
         delete_mockup_file(version["file_path"])
-    await queries.delete_mockup(db, mockup_id)
 
 
 async def update_design(db: aiosqlite.Connection, mockup_id: str, *,
@@ -204,7 +221,7 @@ async def update_design(db: aiosqlite.Connection, mockup_id: str, *,
         return
     async with queries.transaction(db):
         if await queries.get_mockup(db, mockup_id) is None:
-            raise ValueError(f"Mockup not found: {mockup_id}")
+            raise NotFound(f"Mockup not found: {mockup_id}")
         await queries.update_design_fields(db, mockup_id, title=title, tags=tags)
         if description is not queries.UNSET:
             latest = (await queries.get_versions(db, mockup_id))[0]
@@ -223,11 +240,11 @@ async def set_version_created_at(db: aiosqlite.Connection, mockup_id: str, numbe
     async with queries.transaction(db):
         design = await queries.get_mockup(db, mockup_id)
         if design is None:
-            raise ValueError(f"Mockup not found: {mockup_id}")
+            raise NotFound(f"Mockup not found: {mockup_id}")
         versions = await queries.get_versions(db, mockup_id)
         numbers = [v["number"] for v in versions]
         if number not in numbers:
-            raise ValueError(f"Version not found: {mockup_id} v{number}")
+            raise NotFound(f"Version not found: {mockup_id} v{number}")
         await queries.update_version_created_at(db, mockup_id, number, created_at)
         await queries.refresh_design_mirror(db, mockup_id)
 

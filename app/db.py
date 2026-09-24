@@ -50,6 +50,16 @@ CREATE INDEX IF NOT EXISTS idx_mockup_aliases_target ON mockup_aliases(mockup_id
 # The app shares one connection across coroutines, so BEGIN IMMEDIATE alone does
 # not isolate them: another coroutine's statements would join the open
 # transaction. Every write therefore holds this per-connection lock.
+#
+# The lock is NOT re-entrant: calling transaction(), or a helper that opens one
+# (insert_mockup, update_mockup, set_favorite), from inside
+# transaction() deadlocks. Inside a transaction use only the non-committing
+# helpers below.
+#
+# Reads do not take the lock. A read on the shared connection while another
+# coroutine's transaction is open sees that transaction's uncommitted rows, which
+# vanish if it rolls back. Any read that decides a write must therefore run
+# inside the same transaction() as the write.
 _locks: "weakref.WeakKeyDictionary[aiosqlite.Connection, asyncio.Lock]" = weakref.WeakKeyDictionary()
 
 
@@ -61,10 +71,12 @@ async def transaction(db: aiosqlite.Connection):
         await db.execute("BEGIN IMMEDIATE")
         try:
             yield db
+            # Inside the try: a failed COMMIT must roll back too, or the
+            # connection stays in an open transaction after the lock is released.
+            await db.commit()
         except BaseException:
             await db.rollback()
             raise
-        await db.commit()
 
 
 async def _migrate_favorite_column(db: aiosqlite.Connection) -> None:
@@ -189,7 +201,9 @@ async def next_version_number(db: aiosqlite.Connection, mockup_id: str) -> int:
         (mockup_id,)
     )
     row = await cursor.fetchone()
-    return int(row["n"]) if row else 1
+    if row is None:
+        raise ValueError(f"Mockup not found: {mockup_id}")
+    return int(row["n"])
 
 
 async def update_design_title(db: aiosqlite.Connection, mockup_id: str, title: str) -> None:
@@ -303,11 +317,11 @@ async def delete_alias(db: aiosqlite.Connection, alias_id: str) -> None:
 async def delete_design_row(db: aiosqlite.Connection, mockup_id: str) -> None:
     """Non-committing design-row delete for a caller already inside transaction()
 
-    (e.g. fold, after re-parenting the design's version elsewhere). Cascade
+    (fold, after re-parenting the design's version elsewhere; versioning's
+    delete_design). Cascade
     removes any of its own versions/aliases still pointing at it; a version or
     alias already re-parented onto another design is untouched (its mockup_id
-    no longer matches). delete_mockup() commits on its own and cannot be
-    reused there.
+    no longer matches).
     """
     await db.execute("DELETE FROM mockups WHERE id = ?", (mockup_id,))
 
@@ -464,13 +478,6 @@ async def count_favorites(db: aiosqlite.Connection) -> int:
     cursor = await db.execute("SELECT COUNT(*) AS n FROM mockups WHERE favorite = 1")
     row = await cursor.fetchone()
     return int(row["n"])
-
-
-async def delete_mockup(db: aiosqlite.Connection, mockup_id: str) -> bool:
-    # ON DELETE CASCADE removes the design's versions and aliases.
-    async with transaction(db):
-        cursor = await db.execute("DELETE FROM mockups WHERE id = ?", (mockup_id,))
-    return cursor.rowcount > 0
 
 
 def _row_to_dict(row: aiosqlite.Row) -> dict:
