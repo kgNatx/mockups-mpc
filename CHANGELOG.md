@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-24
+
 ### Added
 - Mockups can now hold version history. `POST /api/upload` and `send_mockup` gain `parent=<id>` (add a version to an existing design instead of creating a new one) and `fold=false` (opt out of auto-fold for that upload). A specific version is directly linkable at `/view/{id}/v/{n}`.
 - New MCP tool `split_version(id, version)` pulls one version back out into its own standalone design — reverses a fold, reusing the old id if it has one.
