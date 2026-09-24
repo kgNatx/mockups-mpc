@@ -66,15 +66,37 @@ Single Docker container running a FastAPI app that serves two roles:
 
 There is no built-in authentication. All API endpoints and MCP tools are open to anyone who can reach the server. This is designed for trusted networks (LAN, VPN, Tailscale) or behind a reverse proxy that handles auth. If you deploy this on a public network, add authentication at the proxy layer.
 
+## Versions
+
+A mockup ("design") can hold more than one version — every revision of the same screen, kept in one place instead of scattering separate mockups.
+
+- **Add a version to an existing design:** upload with `-F parent=<id>` (a design or alias id). It's added as the next version; earlier versions and their files are kept.
+- **Auto-fold:** upload without `parent` and the server still checks for a match. If exactly one design in the same project has the same *base title* — the title with trailing markers like `v2`, `draft 3`, `rev 2`, `r5`, or a bare trailing number stripped — the upload becomes a new version of it automatically. Variant markers (`option B`, `variant C`, a standalone trailing letter) are never stripped, so "Hero — option B" and "Hero — option C" stay separate designs. Zero or several matches also create a new design. Pass `-F fold=false` to always create a new design regardless of title.
+- **Direct link to one version:** `/view/{id}/v/{n}` serves that exact version; `/view/{id}` always serves the latest.
+- **Old ids keep working.** Folding or splitting never deletes an id you've already been given — it becomes an *alias* pinned to the version it used to point at, and every read (`/view/…`, `get_mockup`, etc.) resolves it transparently.
+- **Undo a fold:** `split_version(id, version)` pulls one version back out into its own standalone design, reusing its old alias id if it has one.
+
+### Merging existing duplicates (opt-in, one-time)
+
+If you were already uploading revisions as separate mockups before this feature existed, `python -m app.fold` finds and merges them:
+
+```bash
+python -m app.fold --dry-run     # print the proposed groups, change nothing
+python -m app.fold --apply       # perform them
+```
+
+It groups designs that share a project and a base title, oldest first, and folds each group into one design (the oldest survives; the rest become versions, with their old ids kept as aliases). **This never runs automatically** — it's a command you run by hand, and only after reviewing the dry-run output, since merging is not reversible in bulk (each design can still be split back out individually with `split_version`).
+
 ## MCP Tools
 
 | Tool | Description |
 |------|-------------|
-| `send_mockup` | Send HTML/SVG (raw string) or PNG/JPG (base64) to the gallery. Returns a gallery URL. |
+| `send_mockup` | Send HTML/SVG (raw string) or PNG/JPG (base64) to the gallery. Supports `parent` and `fold` (see Versions). Returns a gallery URL. |
 | `list_mockups` | List mockups reverse-chronologically, optionally filtered by project. |
-| `get_mockup` | Get a specific mockup by UUID with view and gallery URLs. Curl the `view_url` to read the file content. |
-| `update_mockup` | Update metadata (title, description, tags) or replace content. |
-| `delete_mockup` | Delete a mockup — removes both the DB record and file on disk. |
+| `get_mockup` | Get a specific mockup by UUID with view and gallery URLs, plus its version list. Curl the `view_url` to read the file content. |
+| `update_mockup` | Update metadata (title, description, tags), or add a new version by supplying `content` (earlier versions are kept). |
+| `split_version` | Split one version out of its design into its own standalone mockup — reverses a fold. |
+| `delete_mockup` | Delete a mockup, or (with `version`) just one version — removes the DB record(s) and file(s) on disk. |
 | `tag_mockup` | Add or remove tags on an existing mockup. |
 
 The server stores all content permanently. AI clients can clean up local files when they're no longer needed, or retrieve content later via `get_mockup`.

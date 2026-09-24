@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 
 ## [Unreleased]
 
+### Added
+- Mockups can now hold version history. `POST /api/upload` and `send_mockup` gain `parent=<id>` (add a version to an existing design instead of creating a new one) and `fold=false` (opt out of auto-fold for that upload). A specific version is directly linkable at `/view/{id}/v/{n}`.
+- New MCP tool `split_version(id, version)` pulls one version back out into its own standalone design — reverses a fold, reusing the old id if it has one.
+- `delete_mockup` (MCP) and `DELETE /api/mockups/{id}/versions/{n}` (API) accept a `version` to delete just that version instead of the whole design; deleting the last remaining version is refused.
+- `get_mockup` and `GET /api/mockups/{id}` now include a `versions` list (number, title, created_at, content_type, view_url per version).
+- Opt-in `python -m app.fold --dry-run` / `--apply` command to merge existing near-duplicate mockups — uploaded before this release, or with `fold=false` — into version history. It never runs on its own; see the README's Versions section.
+- Migration: on first startup after upgrading, every existing mockup gets a v1 automatically. Nothing merges and the list looks identical after upgrade; running it again (or restarting) is a no-op.
+
+### Changed
+- **Behaviour change for tool callers:** `update_mockup` with `content` now adds a new version instead of overwriting the current one and its file. Metadata-only updates (title, description, tags) are unchanged.
+- Auto-fold is on by default: uploading a mockup whose title matches exactly one existing design's title once trailing iteration markers are stripped (`v2`, `draft 3`, `rev 2`, `r5`, or a bare trailing number — e.g. "Screen 1" / "Screen 2") adds it as a new version of that design instead of creating a separate one. Pass `-F fold=false` (or `fold=False` to `send_mockup`) to always create a new design. Variant markers (`option B`, `variant C`, a standalone trailing letter) are never folded together.
+- Gallery "newest" sort and `GET /api/projects` order now use each design's latest version time, not its original upload time.
+
 ### Fixed
 - On touch screens the feed row's always-visible action buttons no longer sit over the title and meta line; the row reserves their width. The meta line stays on one line at every width, with a long project badge truncated by an ellipsis instead of wrapping.
 
