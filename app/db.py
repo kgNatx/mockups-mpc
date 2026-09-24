@@ -191,6 +191,33 @@ async def update_design_title(db: aiosqlite.Connection, mockup_id: str, title: s
     await db.execute("UPDATE mockups SET title = ? WHERE id = ?", (title, mockup_id))
 
 
+async def update_design_fields(db: aiosqlite.Connection, mockup_id: str, *,
+                               title: str | None = None, tags: list[str] | None = None,
+                               favorite: bool | None = None) -> None:
+    """Non-committing metadata update for a caller already inside transaction()
+
+    (e.g. fold, which sets a survivor's title/tags/favorite alongside its own
+    version writes). update_mockup() commits on its own and cannot be reused there.
+    """
+    sets = []
+    params = []
+    if title is not None:
+        sets.append("title = ?")
+        params.append(title)
+    if tags is not None:
+        sets.append("tags = ?")
+        params.append(json.dumps(tags))
+    if favorite is not None:
+        sets.append("favorite = ?")
+        params.append(1 if favorite else 0)
+    if not sets:
+        return
+    sets.append("updated_at = ?")
+    params.append(datetime.now(timezone.utc).isoformat())
+    params.append(mockup_id)
+    await db.execute(f"UPDATE mockups SET {', '.join(sets)} WHERE id = ?", params)
+
+
 async def update_version_created_at(db: aiosqlite.Connection, mockup_id: str, number: int,
                                     created_at: datetime | str) -> None:
     await db.execute(
@@ -253,6 +280,18 @@ async def insert_alias(db: aiosqlite.Connection, *, alias_id: str, mockup_id: st
 
 async def delete_alias(db: aiosqlite.Connection, alias_id: str) -> None:
     await db.execute("DELETE FROM mockup_aliases WHERE alias_id = ?", (alias_id,))
+
+
+async def delete_design_row(db: aiosqlite.Connection, mockup_id: str) -> None:
+    """Non-committing design-row delete for a caller already inside transaction()
+
+    (e.g. fold, after re-parenting the design's version elsewhere). Cascade
+    removes any of its own versions/aliases still pointing at it; a version or
+    alias already re-parented onto another design is untouched (its mockup_id
+    no longer matches). delete_mockup() commits on its own and cannot be
+    reused there.
+    """
+    await db.execute("DELETE FROM mockups WHERE id = ?", (mockup_id,))
 
 
 # --- Reads ---
