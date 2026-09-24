@@ -191,6 +191,19 @@ async def update_design_title(db: aiosqlite.Connection, mockup_id: str, title: s
     await db.execute("UPDATE mockups SET title = ? WHERE id = ?", (title, mockup_id))
 
 
+async def update_version_created_at(db: aiosqlite.Connection, mockup_id: str, number: int,
+                                    created_at: datetime | str) -> None:
+    await db.execute(
+        "UPDATE mockup_versions SET created_at = ? WHERE mockup_id = ? AND number = ?",
+        (_ts(created_at), mockup_id, number))
+
+
+async def update_design_created_at(db: aiosqlite.Connection, mockup_id: str,
+                                   created_at: datetime | str) -> None:
+    await db.execute("UPDATE mockups SET created_at = ? WHERE id = ?",
+                     (_ts(created_at), mockup_id))
+
+
 async def refresh_design_mirror(db: aiosqlite.Connection, mockup_id: str) -> None:
     """Copy the highest-numbered version onto the design row; recount versions."""
     latest = """(SELECT {col} FROM mockup_versions v WHERE v.mockup_id = mockups.id

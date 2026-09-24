@@ -96,3 +96,83 @@ async def test_view_image_has_no_sandbox_csp(client):
     resp = await client.get(f"/view/{vid}")
     assert resp.status_code == 200
     assert "content-security-policy" not in resp.headers
+
+
+# --- versioned /view routes (chunk 2) ---
+
+@pytest.mark.asyncio
+async def test_view_id_serves_latest_and_v_n_serves_that_version(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>v2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+    resp = await client.get(f"/view/{mid}")
+    assert resp.text == "<p>v2</p>"
+    resp = await client.get(f"/view/{mid}/v/1")
+    assert resp.text == "<p>v1</p>"
+
+
+@pytest.mark.asyncio
+async def test_view_unknown_version_returns_404(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    resp = await client.get(f"/view/{mid}/v/99")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_view_alias_serves_pinned_version(client):
+    from app.db import init_db, insert_alias, transaction
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id="old-link", mockup_id=mid, number=1)
+    await db.close()
+
+    resp = await client.get("/view/old-link")
+    assert resp.status_code == 200
+    assert resp.text == "<p>v1</p>"
+
+
+@pytest.mark.asyncio
+async def test_view_serves_each_version_headers_independently_rf2(client):
+    # RF-2: v1 is html (sandboxed), v2 is png (no CSP). Each URL must reflect
+    # its OWN version's content type and headers, not the design's mirror.
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<h1>v1</h1>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+
+    resp = await client.get(f"/view/{mid}")
+    assert resp.headers["content-type"].startswith("image/png")
+    assert "content-security-policy" not in resp.headers
+
+    resp = await client.get(f"/view/{mid}/v/1")
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "sandbox" in resp.headers["content-security-policy"]
+    assert resp.headers["x-content-type-options"] == "nosniff"

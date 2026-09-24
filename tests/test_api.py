@@ -239,3 +239,268 @@ async def test_api_favorites_count(client):
     resp = await client.get("/api/favorites/count")
     assert resp.status_code == 200
     assert resp.json() == {"count": 1}
+
+
+# --- upload: parent / fold (chunk 2) ---
+
+@pytest.mark.asyncio
+async def test_upload_with_parent_adds_version(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    parent_id = resp.json()["id"]
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>v2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": parent_id},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == parent_id
+    assert body["version"] == 2
+    assert body["folded"] is False
+
+    resp = await client.get(f"/view/{parent_id}")
+    assert resp.text == "<p>v2</p>"
+
+
+@pytest.mark.asyncio
+async def test_upload_with_alias_parent(client):
+    from app.db import init_db, insert_alias, transaction
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>v1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    parent_id = resp.json()["id"]
+
+    db = await init_db()
+    async with transaction(db):
+        await insert_alias(db, alias_id="old-link", mockup_id=parent_id, number=1)
+    await db.close()
+
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>v2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": "old-link"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["id"] == parent_id
+    assert resp.json()["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_upload_unknown_parent_returns_404(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>x</p>", "text/html")},
+        data={"project": "P", "title": "T", "parent": "nope"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"] == "Unknown parent: nope"
+
+
+@pytest.mark.asyncio
+async def test_upload_parent_other_project_returns_400(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "ProjA", "title": "Hero"},
+    )
+    parent_id = resp.json()["id"]
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>2</p>", "text/html")},
+        data={"project": "ProjB", "title": "Hero v2", "parent": parent_id},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_upload_auto_folds_on_single_match(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Privacy page — draft 1"},
+    )
+    parent_id = resp.json()["id"]
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>2</p>", "text/html")},
+        data={"project": "P", "title": "Privacy page — draft 2"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == parent_id
+    assert body["folded"] is True
+    assert body["note"] == (
+        "Added as version 2 of 'Privacy page'. "
+        "Resend with fold=false if this was meant to be a separate mockup."
+    )
+
+
+@pytest.mark.asyncio
+async def test_upload_no_fold_on_two_matches(client):
+    await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Privacy page — draft 1"},
+    )
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>2</p>", "text/html")},
+        data={"project": "P", "title": "Privacy page — draft 2", "fold": "false"},
+    )
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("c.html", b"<p>3</p>", "text/html")},
+        data={"project": "P", "title": "Privacy page — draft 3"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["folded"] is False
+    assert resp.json()["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_upload_fold_false_never_folds(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Privacy page — draft 1"},
+    )
+    parent_id = resp.json()["id"]
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>2</p>", "text/html")},
+        data={"project": "P", "title": "Privacy page — draft 2", "fold": "false"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["id"] != parent_id
+    assert resp.json()["folded"] is False
+
+
+@pytest.mark.asyncio
+async def test_upload_option_b_does_not_fold_into_option_a(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>a</p>", "text/html")},
+        data={"project": "P", "title": "Hero — option A"},
+    )
+    a_id = resp.json()["id"]
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>b</p>", "text/html")},
+        data={"project": "P", "title": "Hero — option B"},
+    )
+    assert resp.json()["id"] != a_id
+    assert resp.json()["version"] == 1
+
+
+# --- /api/mockups/{id}: version param, split, delete-version (chunk 2) ---
+
+@pytest.mark.asyncio
+async def test_api_get_mockup_with_version_param(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+    resp = await client.get(f"/api/mockups/{mid}?v=1")
+    assert resp.status_code == 200
+    assert resp.json()["version"] == 1
+    assert resp.json()["view_url"].endswith("/v/1")
+
+
+@pytest.mark.asyncio
+async def test_api_split_version(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+    resp = await client.post(f"/api/mockups/{mid}/versions/2/split")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] != mid
+    assert body["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_api_split_unknown_version_returns_404(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    resp = await client.post(f"/api/mockups/{mid}/versions/99/split")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_api_split_only_version_returns_409(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    resp = await client.post(f"/api/mockups/{mid}/versions/1/split")
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_api_delete_version_returns_204(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    await client.post(
+        "/api/upload",
+        files={"file": ("b.html", b"<p>2</p>", "text/html")},
+        data={"project": "P", "title": "Hero v2", "parent": mid},
+    )
+    resp = await client.delete(f"/api/mockups/{mid}/versions/2")
+    assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_api_delete_last_version_returns_409(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    resp = await client.delete(f"/api/mockups/{mid}/versions/1")
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_api_delete_unknown_version_returns_404(client):
+    resp = await client.post(
+        "/api/upload",
+        files={"file": ("a.html", b"<p>1</p>", "text/html")},
+        data={"project": "P", "title": "Hero"},
+    )
+    mid = resp.json()["id"]
+    resp = await client.delete(f"/api/mockups/{mid}/versions/99")
+    assert resp.status_code == 404

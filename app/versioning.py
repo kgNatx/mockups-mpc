@@ -61,6 +61,10 @@ class VersionRef:
     folded: bool
 
 
+class UnknownParent(ValueError):
+    """Raised when `parent` (an upload's target design) doesn't resolve."""
+
+
 async def create_design(db: aiosqlite.Connection, *, project: str, title: str,
                         description: str | None, content_type: str, content: str,
                         tags: list[str]) -> VersionRef:
@@ -184,6 +188,28 @@ async def delete_design(db: aiosqlite.Connection, mockup_id: str) -> None:
     for version in await queries.get_versions(db, mockup_id):
         delete_mockup_file(version["file_path"])
     await queries.delete_mockup(db, mockup_id)
+
+
+async def set_version_created_at(db: aiosqlite.Connection, mockup_id: str, number: int,
+                                 created_at: str) -> None:
+    """Backdate/forward-date one version.
+
+    `mockups.created_at` means "the design's first version's time", so touching
+    the design's lowest-numbered version moves it too; touching any other
+    version leaves it alone.
+    """
+    async with queries.transaction(db):
+        design = await queries.get_mockup(db, mockup_id)
+        if design is None:
+            raise ValueError(f"Mockup not found: {mockup_id}")
+        versions = await queries.get_versions(db, mockup_id)
+        numbers = [v["number"] for v in versions]
+        if number not in numbers:
+            raise ValueError(f"Version not found: {mockup_id} v{number}")
+        await queries.update_version_created_at(db, mockup_id, number, created_at)
+        if number == min(numbers):
+            await queries.update_design_created_at(db, mockup_id, created_at)
+        await queries.refresh_design_mirror(db, mockup_id)
 
 
 async def resolve(db: aiosqlite.Connection, id: str,
