@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-24
+
+### Fixed
+- A feed row's version history collapses again when you click its `N versions` chip a second time. It opened but never closed.
+- The action buttons a feed row shows on hover now sit on a raised tray, with the title fading out before it. A long title no longer runs into the icons.
+
 ## [1.5.0] - 2026-09-24
 
 ### Added
