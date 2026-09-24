@@ -52,7 +52,7 @@ Inputs the spec implies but a task's happy-path tests would not exercise. Each h
 
 ---
 
-## Chunk 1 — Data layer: schema, migration, versioning core
+## Task 1 — Data layer: schema, migration, versioning core
 
 **Rigor:** schema migration on production data — this chunk's review is mandatory and must include the migration-on-a-v1.4-shaped-DB test being **seen to fail first**.
 
@@ -112,7 +112,7 @@ Inputs the spec implies but a task's happy-path tests would not exercise. Each h
 
 ---
 
-## Chunk 2 — Agent and gallery interfaces
+## Task 2 — Agent and gallery interfaces
 
 **Files:** modify `app/mcp_server.py`, `app/routes/api.py`, `app/routes/gallery.py`; extend `tests/test_mcp_tools.py`, `tests/test_api.py`, `tests/test_gallery.py`.
 
@@ -142,7 +142,7 @@ Inputs the spec implies but a task's happy-path tests would not exercise. Each h
 
 ---
 
-## Chunk 3 — Opt-in fold command + docs
+## Task 3 — Opt-in fold command + docs
 
 **Files:** create `app/fold.py`, `tests/test_fold.py`; modify `README.md`, `CHANGELOG.md`.
 
@@ -165,7 +165,7 @@ Inputs the spec implies but a task's happy-path tests would not exercise. Each h
 
 ---
 
-## Chunk 4 — Compact sidebar, brand bar, collapsed bar
+## Task 4 — Compact sidebar, brand bar, collapsed bar
 
 Independent of versioning except the readout's design count. Can run in parallel with chunks 1–3 if dispatched separately; it only touches `gallery.html` / `style.css`.
 
@@ -188,7 +188,7 @@ Independent of versioning except the readout's design count. Can run in parallel
 
 ---
 
-## Chunk 5 — Version UI
+## Task 5 — Version UI
 
 **Files:** modify `app/templates/gallery.html`, `app/static/style.css`.
 
@@ -209,7 +209,7 @@ Independent of versioning except the readout's design count. Can run in parallel
 
 ---
 
-## After chunk 5
+## After Task 5 (controller only)
 
 - [ ] Whole-branch review (integration lens: chunk 1's invariants honoured by chunks 2/3/5; error mapping 404/400/409 consistent across API, MCP and UI; no orphaned CSS/JS from chunk 4).
 - [ ] Owner approves the live fold dry-run list (from chunk 3).
